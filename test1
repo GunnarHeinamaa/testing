@@ -1,0 +1,16 @@
+/**
+ * Google Drive streamed us `captions.json` as **base‑64** bytes in
+ *   items[0].binary.data   (n8n temporary file reference)
+ * This snippet decodes → parses → caches it forever.
+ */
+
+// 1 · decode → string → JSON
+const b64   = items[0].binary.data;              // raw bytes
+const text  = Buffer.from(b64, 'base64').toString('utf8');
+const photos = JSON.parse(text);                 // ≈ 30 caption objects
+
+// 2 · stick it in global workflow static‑data (survives redeploys)
+const store = $getWorkflowStaticData('global');  // or 'node' scope
+store.ktaPhotos = photos;
+
+return items;   // ← optional pass‑through / debugging
