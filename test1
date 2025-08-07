@@ -1,16 +1,1547 @@
-/**
- * Google Drive streamed us `captions.json` as **base‑64** bytes in
- *   items[0].binary.data   (n8n temporary file reference)
- * This snippet decodes → parses → caches it forever.
- */
-
-// 1 · decode → string → JSON
-const b64   = items[0].binary.data;              // raw bytes
-const text  = Buffer.from(b64, 'base64').toString('utf8');
-const photos = JSON.parse(text);                 // ≈ 30 caption objects
-
-// 2 · stick it in global workflow static‑data (survives redeploys)
-const store = $getWorkflowStaticData('global');  // or 'node' scope
-store.ktaPhotos = photos;
-
-return items;   // ← optional pass‑through / debugging
+{
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "4e18fdc1-9567-4dbf-a5af-d9a6ad37e415",
+              "leftValue": "={{ $('Telegram Trigger').item.json.message.voice }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is Voice?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        -176
+      ],
+      "id": "3dcc7661-c38c-4701-907f-3c52be1f10a8"
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "chatInput",
+              "value": "={{ $('Telegram Trigger').item.json.message.text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Pass Text Body",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        -80
+      ],
+      "id": "afd2efbf-25ba-42aa-a4b3-24bc76268efc"
+    },
+    {
+      "parameters": {
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are KunnarAdmin, a construction company assistant.\n\nWhen you receive user input, you MUST use one of your available tools:\n\n1. Use the \"Diary Agent\" tool for:\n   - Work reports (user describing work done)\n   - Activity logging\n   - Construction progress updates\n\n2. Use the \"Calendar Agent\" tool for:\n   - Scheduling requests\n   - Calendar operations\n   - Time-based queries\n\n3. Use the \"Knowledge Agent\" tool for:\n   - Questions about past work/projects\n   - Looking up previous reports\n   - Searching company documentation\n   - \"What did we do last week?\" type queries\n\n4. Use other tools as needed for their specific purposes.\n\nALWAYS use a tool - do not provide direct responses without using tools.\n\n**RESPONSE COORDINATION:**\nWhen diary/note actions are completed:\n1. Give brief, friendly acknowledgment in Estonian\n2. Optionally add one relevant piece of contextual information\n3. Keep total response under 2 sentences\n4. Sound natural and conversational\n\n**GOOD RESPONSE PATTERNS:**\n- \"Panin kirja! [Optional: relevant context]\"\n- \"Märkisin üles. [Optional: gentle reminder]\"\n- \"Sain aru! [Optional: encouraging note]\"\n\n**AVOID:**\n- Repeating user input verbatim\n- Overly detailed confirmations\n- Robotic language\n- Long explanations of what was saved",
+          "maxIterations": 5
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.1,
+      "position": [
+        2816,
+        -80
+      ],
+      "id": "9e9b561b-d370-411a-b423-4751ca3987c8",
+      "name": "Orchestrator",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "toolDescription": "You are CalendarAgent.\n",
+        "text": "={{$json.text}}",
+        "options": {
+          "systemMessage": "You are a professional Calendar Agent, an AI assistant designed to help manage and query calendar events efficiently.\n\n**LANGUAGE:**\n- ALWAYS respond in Estonian\n- Use professional Estonian business language\n- Maintain formal register appropriate for workplace communication\n\n**COMMUNICATION STYLE:**\n- Be professional, concise, and helpful\n- Use clear, business-appropriate Estonian language\n- Avoid overly casual expressions or slang\n- Use polite formal Estonian (avoid \"kuule\", \"tõesti\", etc.)\n- Provide accurate information in a structured format\n\n**DATE FORMATTING REQUIREMENTS:**\n- When users ask about specific dates, provide proper ISO datetime strings for API calls\n- Always use UTC timezone format: YYYY-MM-DDTHH:MM:SS.SSSZ\n- For single day queries, set:\n  - After: Start of day (00:00:00.000Z)\n  - Before: End of day (23:59:59.999Z)\n- Calculate appropriate date ranges for multi-day queries\n\n**RESPONSE FORMATTING:**\n- Present event information clearly and systematically\n- Include: event title, date, start time, end time, duration when relevant\n- Use consistent date/time formatting in responses\n- For multiple events, organize chronologically\n- If no events found, clearly state the searched date range\n\n**PROFESSIONAL ESTONIAN RESPONSE EXAMPLES:**\nInstead of: \"Kuule, kaheksandal augustil on meil tõesti 'Ehitame Kuuri' üritus, algus kell 12:30 ja lõpp kell 20:30 – tule kindlasti!\"\n\nUse: \"8. augustil on teil planeeritud üritus 'Ehitame Kuuri' ajal 12:30-20:30.\"\n\nOr: \"Teie kalendris on 8. augustil üks üritus: 'Ehitame Kuuri' kestusega 12:30 kuni 20:30 (8 tundi).\"\n\n**APPROPRIATE ESTONIAN PHRASES:**\n- \"Teie kalendris on...\"\n- \"8. augustil on planeeritud...\"\n- \"Järgmised üritused on...\"\n- \"Kalendrist leidub...\"\n- \"Määratud on järgmised kohtumised...\"\n- \"Tiimikoosolek on lisatud kalendrisse...\"\n- \"Üritus on edukalt loodud...\"\n\n**AVOID PHRASES THAT SOUND CONFIRMATORY:**\n- Avoid \"tõepoolest\" (sounds like confirming a question)\n- Avoid \"jah, on olemas\" (sounds like answering \"is there?\")\n- Use direct statements instead of confirmatory language\n\n**CURRENT CONTEXT:**\n- Today's date: Wednesday, August 06, 2025\n- User timezone: Europe/Tallinn (EET/EEST)\n- Convert local time references to UTC for API calls\n- Present times in user's local timezone in responses\n\n**QUERY HANDLING:**\n- Parse date requests accurately\n- Confirm date ranges when searching\n- Handle ambiguous dates by asking for clarification\n- Provide helpful context when appropriate\n\nMaintain professionalism while being genuinely helpful and efficient."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 2.2,
+      "position": [
+        2608,
+        608
+      ],
+      "id": "2e363e96-4aec-4334-a543-964fc2055ea0",
+      "name": "Calendar Agent"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {
+          "download": true
+        }
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -288,
+        -176
+      ],
+      "id": "1b0f1897-2c68-4e08-baa8-0579c09502df",
+      "name": "Telegram Trigger",
+      "webhookId": "6d7deb6e-42c8-43f4-ba0d-969914231121",
+      "credentials": {
+        "telegramApi": {
+          "id": "ysvpOgV3wwAx3KvP",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $('Telegram Trigger').item.json.message.voice.file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1280,
+        -272
+      ],
+      "id": "9139be6a-363f-4bed-8e9f-23f0b8977e7e",
+      "name": "Get a file",
+      "webhookId": "55188ad0-c5d9-447e-93c0-13168f62c248",
+      "credentials": {
+        "telegramApi": {
+          "id": "ysvpOgV3wwAx3KvP",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        320
+      ],
+      "id": "94f35ab0-1f43-450d-bde1-c99581e2a60b",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1,
+      "position": [
+        1504,
+        320
+      ],
+      "id": "691894cc-f43c-4b86-85c5-c87bca0df18a",
+      "name": "Think"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "supergunnar_chatentries",
+          "mode": "list",
+          "cachedResultName": "supergunnar_chatentries"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Telegram Trigger').item.json.update_id }}",
+            "created_at": "={{ $now }}",
+            "message": "={{ $('Set User Prompt 1').item.json.chatInput }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        1648,
+        320
+      ],
+      "id": "6bd160c5-b4e6-4122-bd38-359442709f6d",
+      "name": "Insert rows in a table in Postgres",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4-turbo",
+          "mode": "list",
+          "cachedResultName": "gpt-4-turbo"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1392,
+        912
+      ],
+      "id": "377dc313-b03d-4878-9370-d26bac412369",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4-turbo",
+          "mode": "list",
+          "cachedResultName": "gpt-4-turbo"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2320,
+        800
+      ],
+      "id": "a0ac8bce-b80a-4e85-b6a2-56709f8c0d39",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $node[\"Telegram Trigger\"].json.message.chat.id }}",
+        "text": "={{ $json.message.content }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3936,
+        -80
+      ],
+      "id": "a23e20a7-4785-407d-9d74-bbad168a73cc",
+      "name": "Reply to User",
+      "webhookId": "4219a6e2-f275-43a6-8854-edebc84ffce1",
+      "credentials": {
+        "telegramApi": {
+          "id": "ysvpOgV3wwAx3KvP",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "chatgpt-4o-latest",
+          "mode": "list",
+          "cachedResultName": "CHATGPT-4O-LATEST"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.text }}"
+            },
+            {
+              "content": "=SYSTEM:\nYou are TranscriptCleaner.\nLanguage must stay Estonian.\nOnly fix obvious ASR errors & punctuation, keep construction jargon intact - UNLESS the transcriber picked up a non-word - then use common sense and critical thinking to fill in the blank or replace an anomaly\nWrap every changed word in <fix></fix>.\nDo NOT shorten, add or remove content.\nEXAMPLES:\n  INPUT: \"Rubetsi kummimatt\"\n  OUTPUT: \"Rubexi kummimatt\"   (Rubetsi → Rubexi)\n  INPUT: \"15 millimeri\"\n  OUTPUT: \"15 mm\"              (millimeri → mm)\n\nAlso operate based on the following:\n\nconst dict = {\n  \"rubezi\": \"Rubexi\",\n  \"kummikomat\": \"kummimatt\",\n  \"põhublatd\": \"põhuplaadi\",\n  \"kübar kargass\": \"kübar­karkass\",\n}; etc\n\nlet txt = item.text.toLowerCase();\nfor (const [wrong, right] of Object.entries(dict)) {\n  const re = new RegExp(`\\\\b${wrong}\\\\b`, \"gi\");\n  txt = txt.replace(re, right);\n}\nitem.text = txt;\nreturn item;\n\nhere is {{ $('Get Vocabulary').item.json.data }} context-based vocabulary.\n\nIf you see “betokontakt”, capitalise as “Betokontakt”.  \nCorrect obvious misspellings of product names in parentheses:\n(knauf→Knauf, sakret→Sakret, ...)\n\nuse your critical thinking. For example \"viidi palju kipsplaatiga minema\" is obviously \"viidi palju kipsplaati ka minema\"\n\nReturn the corrected sentence only, with no markup, no <fix> tags, no commentary.",
+              "role": "system"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1824,
+        -272
+      ],
+      "id": "b6e53237-c3b1-46c3-91e6-6fc9a1ae2461",
+      "name": "Transcript Cleaner",
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "diaryagententries",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "timestamp",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            },
+            {
+              "fieldId": "author",
+              "fieldValue": "={{ $('Telegram Trigger').item.json.message.from.first_name }} {{ $('Telegram Trigger').item.json.message.from.last_name }}"
+            },
+            {
+              "fieldId": "text",
+              "fieldValue": "={{$json.text}}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        912
+      ],
+      "id": "5e7693c4-4931-4176-ac36-efe1b55f740c",
+      "name": "Create a row in Supabase",
+      "credentials": {
+        "supabaseApi": {
+          "id": "auGOK59p7RmaXXjU",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{ \"agent\": \"Calendar\", \"payload\": { \"query\": \"…\" } }\n",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        3072,
+        96
+      ],
+      "id": "011f4f76-b017-466a-ab94-879eba9ebf32",
+      "name": "Orchestrator Output Parser"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "gunnar@pohuplaat.ee",
+          "mode": "list",
+          "cachedResultName": "gunnar@pohuplaat.ee"
+        },
+        "start": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start', ``, 'string') }}",
+        "end": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End', ``, 'string') }}",
+        "useDefaultReminders": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Use_Default_Reminders', ``, 'boolean') }}",
+        "additionalFields": {
+          "summary": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Summary', ``, 'string') }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        2928,
+        1088
+      ],
+      "id": "316d58ae-81e9-4322-a9cd-7a99d590b6d7",
+      "name": "Create an event in Google Calendar",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "hVqOm7BhmzffHr8V",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": {
+          "__rl": true,
+          "value": "gunnar@pohuplaat.ee",
+          "mode": "list",
+          "cachedResultName": "gunnar@pohuplaat.ee"
+        },
+        "eventId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Event_ID', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        2576,
+        992
+      ],
+      "id": "58630942-55c6-43f2-9206-7b72435e68e8",
+      "name": "Delete an event in Google Calendar",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "hVqOm7BhmzffHr8V",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "calendar": {
+          "__rl": true,
+          "value": "gunnar@pohuplaat.ee",
+          "mode": "list",
+          "cachedResultName": "gunnar@pohuplaat.ee"
+        },
+        "eventId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Event_ID', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        2672,
+        1088
+      ],
+      "id": "876c2c37-c351-4483-8366-b620de741992",
+      "name": "Get an event in Google Calendar",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "hVqOm7BhmzffHr8V",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "gunnar@pohuplaat.ee",
+          "mode": "list",
+          "cachedResultName": "gunnar@pohuplaat.ee"
+        },
+        "returnAll": "=true",
+        "timeMin": "={{ new Date().toISOString().split('T')[0] }}T00:00:00.000Z",
+        "timeMax": "={{ new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0] }}T23:59:59.999Z",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        2464,
+        880
+      ],
+      "id": "a6ec0a79-e23a-435e-b3b2-281a5f92c519",
+      "name": "Get many events in Google Calendar",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "hVqOm7BhmzffHr8V",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "calendar": {
+          "__rl": true,
+          "value": "gunnar@pohuplaat.ee",
+          "mode": "list",
+          "cachedResultName": "gunnar@pohuplaat.ee"
+        },
+        "eventId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Event_ID', ``, 'string') }}",
+        "useDefaultReminders": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Use_Default_Reminders', ``, 'boolean') }}",
+        "updateFields": {}
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        2800,
+        1136
+      ],
+      "id": "540b84fc-ec5f-4e9e-b2ac-acba3bb28ea7",
+      "name": "Update an event in Google Calendar",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "hVqOm7BhmzffHr8V",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Stores diary entry in Supabase and returns JSON {diary_id}\n\nSupabaseInsert({\n  \"timestamp\": \"<ISO now>\",\n  \"author\": \"<user_id>\",\n  \"text\": \"<text>\"\n})",
+        "text": "={{$json.text}}",
+        "options": {
+          "systemMessage": "You are a helpful personal assistant that manages notes, thoughts, and diary entries in Estonian.\n\nWhen recording diary entries, you MUST use BOTH tools:\n1. \"Create a row in Supabase\" for primary storage\n2. \"Append row in sheet in Google Sheets\" for backup logging\nAlways use both tools for every diary entry to ensure redundant storage!\n\n**COMMUNICATION STYLE:**\n- Be friendly, natural, and conversational in Estonian\n- Use warm, encouraging language\n- Sound like a helpful colleague, not a robot\n- Keep responses concise but personable\n\n**WHEN RECORDING NOTES/THOUGHTS:**\nAfter successfully saving information, respond with variations like:\n- \"Väga hea, panin kirja!\"\n- \"Sain aru, märkisin üles!\"\n- \"Kirjas! Anna teada, kui küsimusi tekib.\"\n- \"Hästi, lisasin märkmetesse!\"\n\n**PROACTIVE ASSISTANCE:**\nWhen appropriate, add helpful context or reminders:\n- Check if there are related upcoming calendar events\n- Mention relevant deadlines or meetings\n- Offer gentle reminders about related tasks\n\n\n\n**EXAMPLE ENHANCED RESPONSES:**\nInstead of: \"Tore, et saime prügi välja viia, koerakuudi valmis ehitada ja veel neli kukerpalli ka teha!\"\n\nBetter options:\n1. Simple: \"Väga hea, panin kirja! Anna teada, kui küsimusi tekib.\"\n2. With context: \"Väga hea, panin kirja! Kui juba siin oled, tuletan igaks juhuks meelde, et esmaspäeval on tiimikoosolek kell 10.\"\n3. Encouraging: \"Suurepärane päev! Panin kõik kirja. Hoian pöialt edasiseks!\"\n\n**TONE GUIDELINES:**\n- Supportive and positive\n- Natural Estonian conversation style\n- Professional but warm\n- Avoid overly formal language\n- Don't repeat back everything the user said\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 2.2,
+      "position": [
+        1632,
+        608
+      ],
+      "id": "a5cf4154-0208-4f6c-b77f-7b35fcc8750c",
+      "name": "Diary Agent"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "263c4baf-c61b-4648-bbd8-ac522258ce96",
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            },
+            {
+              "id": "46bd5686-0c4a-4efd-849e-8c8de2906a5f",
+              "name": "input",
+              "value": "{{ $json.chatInput }}",
+              "type": "string"
+            },
+            {
+              "id": "c0dc6913-a3a3-4fc5-bcb7-7f177b037cc0",
+              "name": "agent",
+              "value": "{{ $json.agent }}",
+              "type": "string"
+            },
+            {
+              "id": "9a060fc0-dd02-4697-b206-a3ff58261bff",
+              "name": "status",
+              "value": "{{ $json.error ? 'error' : 'ok' }}",
+              "type": "string"
+            },
+            {
+              "id": "b8bbdc72-fc40-47b1-b4ad-a9998a923414",
+              "name": "output",
+              "value": "={{ JSON.stringify($json) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3216,
+        -80
+      ],
+      "id": "c0b20d52-f2e3-4a4b-b3f8-ad74a56fd2bf",
+      "name": "Set Results"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Prompt kasutajalt:\n{{ $('Orchestrator').item.json.output.payload.query }}\n\nSisu, mille põhjal talle vastame:\n{{ JSON.stringify($json) }}\t"
+            },
+            {
+              "content": "You are ComposeReply for a construction company knowledge system.\n\nYou will receive JSON data containing work reports or project information found in company records.\n\nYour job:\n1. Extract the key information (dates, locations, work done)\n2. Present it naturally in Estonian \n3. Be helpful and informative, not just confirming\n4. Don't be corporate - talk like a normal person in construction\n5. If multiple work entries, mention the most relevant ones\n\nExample good response:\n\"18. aprillil tegime Valtu spordimaja renoveerimist - paigaldasime isolatsiooni ja tegime viimistlustöid. 21. aprillil jätkasime kontrolltöödega.\"\n\nDON'T just say \"Leidsin infot\" - actually tell them WHAT was found!",
+              "role": "system"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        3440,
+        -80
+      ],
+      "id": "1a70b9cf-fa6b-4775-8155-a73cd104c2b8",
+      "name": "Compose Reply",
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        3072,
+        352
+      ],
+      "id": "6e0197d6-1304-4646-9dba-83bf9d65eac3",
+      "name": "OpenAI Chat Model6",
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE",
+          "mode": "list",
+          "cachedResultName": "Gunnar Telegram - Tööpäevikud",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Sisu": "={{ $json.text.startsWith('=') ? ' ' + $json.text : $json.text }}",
+            "Tiimiliige": "={{ $('Telegram Trigger').item.json.message.from.first_name }} {{ $('Telegram Trigger').item.json.message.from.last_name }}",
+            "Aeg": "={{ $now.format('dd.MM.yyyy HH:mm') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "ID",
+              "displayName": "ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Aeg",
+              "displayName": "Aeg",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Tiimiliige",
+              "displayName": "Tiimiliige",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sisu",
+              "displayName": "Sisu",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.6,
+      "position": [
+        1904,
+        912
+      ],
+      "id": "e193b95c-560f-40c6-94ba-678c18dd8f7e",
+      "name": "Append row in sheet in Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QhkH0qasXfAL0EsP",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "37824827-7042-4b00-be51-ce83b8328ee4",
+      "name": "Embeddings OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [
+        3776,
+        1120
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "workHistoryKTAs",
+        "toolDescription": "Returns the most relevant installation or technical excerpts about Ekopanel strawboard products from the Supabase vector store to help answer customer questions.",
+        "tableName": {
+          "__rl": true,
+          "value": "rag_documents_diary_agent",
+          "mode": "list",
+          "cachedResultName": "rag_documents_diary_agent"
+        },
+        "topK": 5,
+        "options": {
+          "queryName": "match_documents"
+        }
+      },
+      "id": "28a8f6d7-030c-4bf0-9c4c-e1b6b4d5e866",
+      "name": "Supabase Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [
+        3760,
+        912
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "auGOK59p7RmaXXjU",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://gist.githubusercontent.com/GunnarHeinamaa/4c6a9e90eea76b829b6881388a4430b5/raw",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        80,
+        -176
+      ],
+      "id": "33674901-489b-4118-8175-e502cf52b1a0",
+      "name": "Get Vocabulary"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f861bb6c-9073-4448-8fb3-74d62d507e1f",
+              "name": "prompt",
+              "value": "={{ \n\"The following recording contains Estonian construction terms: \" +\n$node[\"Get Vocabulary\"].json.data\n  .split('\\n')\n  .filter(w => w.length > 3)              // drop very short tokens\n  .filter((w,i,a) => a.indexOf(w) === i)  // unique\n  .slice(0, 40)                           // keep first 40 words\n  .join(', ')\n}}\n",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        432,
+        -176
+      ],
+      "id": "d40c97c8-5abf-414f-a0f7-24a56229ac4b",
+      "name": "Build Prompt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "whisper-1"
+            },
+            {
+              "name": "language",
+              "value": "et"
+            },
+            {
+              "name": "prompt",
+              "value": "=\"The following recording contains Estonian construction terms: \" {{ $('Build Prompt').item.json.prompt }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1472,
+        -272
+      ],
+      "id": "3db35fce-e45e-4b36-8165-c7763340b4f9",
+      "name": "Whisper",
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "5c8d9453-4565-4609-844f-04309c43d020",
+      "name": "Embeddings OpenAI2",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        1216
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "documents",
+        "toolDescription": "Returns the most relevant installation or technical excerpts about Ekopanel strawboard products from the Supabase vector store to help answer customer questions.",
+        "tableName": {
+          "__rl": true,
+          "value": "rag_documents_diary_agent",
+          "mode": "list",
+          "cachedResultName": "rag_documents_diary_agent"
+        },
+        "options": {
+          "queryName": "match_documents"
+        }
+      },
+      "id": "b79e4cb9-96a5-429e-8358-7f59167bc83b",
+      "name": "Supabase Vector Store1",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        1136
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "auGOK59p7RmaXXjU",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## CALENDAR AGENT \n",
+        "height": 864,
+        "width": 912,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2224,
+        496
+      ],
+      "id": "a74b1fd9-d235-4168-a5d9-5f58ab62341f",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## DIARY AGENT \n",
+        "height": 864,
+        "width": 912,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1296,
+        496
+      ],
+      "id": "8fc9af72-db8e-44cf-b40d-bede2ab41d11",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "unified-text",
+              "name": "chatInput",
+              "value": "=={{ $json.message?.content || $json.chatInput || $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "unified-chatInput",
+              "name": "text",
+              "value": "={{ $json.message?.content || $json.chatInput || $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "input-source",
+              "name": "inputSource",
+              "value": "={{ $json.message?.content ? 'voice' : 'text' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2416,
+        -80
+      ],
+      "id": "d69fe3b3-2169-4fb9-b019-c468a699ae84",
+      "name": "Normalize Input"
+    },
+    {
+      "parameters": {
+        "toolDescription": "A knowledge retrieval assistant for construction work reports.",
+        "text": "={{ $('Normalize Input').item.json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a knowledge retrieval assistant for construction work reports.\n\nWhen searching for information:\n1. Focus on WORK ACTIVITIES and PROGRESS REPORTS\n2. If you only find product specifications, say \"Ei leidnud tööaruandeid, ainult tehnilisi andmeid\"\n3. Look for dates, locations, and actual work done\n4. Avoid giving product installation requirements unless specifically asked\n\nIf the retrieved information doesn't answer the user's question about work activities, be honest about it.\n\nWhen using the google sheet tool, make sure to pass on a time format that works with the format we use on our sheet: 06.08.2025 15:10\nSo when the user asks about the past week or yesterday, the query needs to pass with the proper format."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 2.2,
+      "position": [
+        3472,
+        704
+      ],
+      "id": "82640c66-ebc6-404e-9aa0-c41a77c0e998",
+      "name": "Knowledge Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        3344,
+        912
+      ],
+      "id": "ea45c9bc-fbd2-4b7b-b7d1-6dd62332263e",
+      "name": "OpenAI Chat Model7",
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE",
+          "mode": "list",
+          "cachedResultName": "Gunnar Telegram - Tööpäevikud",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE/edit#gid=0"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "B:D"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.6,
+      "position": [
+        3632,
+        912
+      ],
+      "id": "4fc81dfb-9972-4242-b4e9-b827535cd9ce",
+      "name": "Get row(s) in sheet in Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QhkH0qasXfAL0EsP",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## KNOWLEDGE AGENT \n",
+        "height": 864,
+        "width": 912,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3152,
+        496
+      ],
+      "id": "10bc04a5-0822-496e-a936-160e6afcc4de",
+      "name": "Sticky Note3"
+    }
+  ],
+  "connections": {
+    "Is Voice?": {
+      "main": [
+        [
+          {
+            "node": "Get a file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pass Text Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pass Text Body": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Set Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Calendar Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Vocabulary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a file": {
+      "main": [
+        [
+          {
+            "node": "Whisper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Think": {
+      "ai_tool": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table in Postgres": {
+      "ai_tool": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Diary Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Calendar Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcript Cleaner": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row in Supabase": {
+      "ai_tool": [
+        [
+          {
+            "node": "Diary Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orchestrator Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event in Google Calendar": {
+      "ai_tool": [
+        [
+          {
+            "node": "Calendar Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete an event in Google Calendar": {
+      "ai_tool": [
+        [
+          {
+            "node": "Calendar Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get an event in Google Calendar": {
+      "ai_tool": [
+        [
+          {
+            "node": "Calendar Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many events in Google Calendar": {
+      "ai_tool": [
+        [
+          {
+            "node": "Calendar Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update an event in Google Calendar": {
+      "ai_tool": [
+        [
+          {
+            "node": "Calendar Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Diary Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Results": {
+      "main": [
+        [
+          {
+            "node": "Compose Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Reply": {
+      "main": [
+        [
+          {
+            "node": "Reply to User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model6": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Orchestrator Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "Diary Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store": {
+      "ai_tool": [
+        [
+          {
+            "node": "Knowledge Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Vocabulary": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Is Voice?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Whisper": {
+      "main": [
+        [
+          {
+            "node": "Transcript Cleaner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI2": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store1",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Diary Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Knowledge Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model7": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Knowledge Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "Knowledge Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Telegram Trigger": [
+      {
+        "update_id": 994587838,
+        "message": {
+          "message_id": 164,
+          "from": {
+            "id": 5634287065,
+            "is_bot": false,
+            "first_name": "Marten",
+            "last_name": "Palu",
+            "language_code": "en"
+          },
+          "chat": {
+            "id": 5634287065,
+            "first_name": "Marten",
+            "last_name": "Palu",
+            "type": "private"
+          },
+          "date": 1754506376,
+          "text": "Viisime prügi välja, ehitasime koerakuudi ja tegime neli kukerpalli"
+        }
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3ff8c8236d61fc15be87a593a452e66a1d21d618f6b7148e70b032539de22929"
+  }
+}
