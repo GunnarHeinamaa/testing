@@ -2,6 +2,806 @@
   "nodes": [
     {
       "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "message"
+            },
+            {
+              "name": "callback_query",
+              "type": "object"
+            },
+            {
+              "name": "chat_id"
+            },
+            {
+              "name": "text"
+            },
+            {
+              "name": "has_photo",
+              "type": "boolean"
+            },
+            {
+              "name": "has_document",
+              "type": "boolean"
+            },
+            {
+              "name": "file_count",
+              "type": "number"
+            },
+            {
+              "name": "has_file",
+              "type": "boolean"
+            },
+            {
+              "name": "file_id"
+            },
+            {
+              "name": "tg_message_id"
+            },
+            {
+              "name": "tg_media_group_id"
+            },
+            {
+              "name": "file_unique_id"
+            }
+          ]
+        }
+      },
+      "id": "a052a084-feb0-40da-9e91-443001fd698e",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        3232,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "315fa8dd-62fc-4475-ac44-6db8a1a5a826",
+              "name": "session_id",
+              "value": "={{ $json.id || $json[0]?.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4400,
+        1488
+      ],
+      "id": "6ac5efb8-0d64-4720-82b1-462934f2fb9f",
+      "name": "Session ID"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{$json.file_id}}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4544,
+        1664
+      ],
+      "id": "71c6dd1b-a50b-487f-8d9d-9e6d594185d6",
+      "name": "Get a file",
+      "webhookId": "47e00695-2f66-4cbb-ae6b-c99616806ac9",
+      "credentials": {
+        "telegramApi": {
+          "id": "ysvpOgV3wwAx3KvP",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "66f5d6ce-10b5-4e07-b6c2-5b748c97bc91",
+              "name": "inbox_id",
+              "value": "='1hPg_8wmNXeFFMx92-asCbQ7NofE5mIIM'",
+              "type": "string"
+            },
+            {
+              "id": "c24fcc96-5214-40d9-bf22-f6fe2ce4ef85",
+              "name": "file_type",
+              "value": "={{ $json.file_id_photo ? 'photo' : ($json.file_id_doc ? 'pdf' : 'other') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5248,
+        1472
+      ],
+      "id": "00818f02-9728-4e93-8134-0a63ac33a5dd",
+      "name": "Paths"
+    },
+    {
+      "parameters": {
+        "name": "={{ $binary.data.fileName || ($json.file_type === 'photo' ? 'photo.jpg' : 'doc.pdf') }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1hPg_8wmNXeFFMx92-asCbQ7NofE5mIIM",
+          "mode": "list",
+          "cachedResultName": "INBOX",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1hPg_8wmNXeFFMx92-asCbQ7NofE5mIIM"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5456,
+        1472
+      ],
+      "id": "5a328d0b-b1f7-411c-88b7-6df0fda295bc",
+      "name": "Upload INBOX",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "etIcdnam5EQ8HEzz",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH s AS (\n  SELECT id\n  FROM kta_sessions\n  WHERE chat_id = $1::bigint\n    AND status = 'collecting'\n    AND ttl_until > now()\n  ORDER BY opened_at DESC\n  LIMIT 1\n),\nu AS (\n  UPDATE kta_sessions\n  SET last_activity = now(),\n      ttl_until    = now() + interval '30 minutes'\n  WHERE id IN (SELECT id FROM s)\n  RETURNING id\n),\ni AS (\n  INSERT INTO kta_sessions (chat_id, ttl_until)\n  SELECT $1::bigint, now() + interval '30 minutes'\n  WHERE NOT EXISTS (SELECT 1 FROM u)\n  RETURNING id\n)\nSELECT id FROM u\nUNION ALL\nSELECT id FROM i;",
+        "options": {
+          "queryReplacement": "={{ [ $json.chat_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4240,
+        1488
+      ],
+      "id": "834dc8dc-62a9-4249-9b95-1182f66424ea",
+      "name": "Open/Create Session",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a9f6a1ce-3cb7-48cc-a28d-ce2038195f7e",
+              "leftValue": "={{$json.has_file}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4240,
+        1680
+      ],
+      "id": "e2580e19-2461-4de3-938b-6df7c1df4f20",
+      "name": "Has File?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ebe3edc7-318b-424c-8b41-00cd1ee766b7",
+              "leftValue": "={{ ($json.message?.text || $json.message?.caption || '').trim().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4720,
+        1328
+      ],
+      "id": "2687caa9-8b3b-4fc9-b59f-fa5fa5fc8f43",
+      "name": "Has Text?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update kta_sessions\nset notes_raw    = array_append(notes_raw, $1::text),\n    last_activity = now(),\n    ttl_until     = now() + interval '30 minutes'\nwhere id = $2::uuid\nreturning id, notes_raw;",
+        "options": {
+          "queryReplacement": "={{ ($json.message?.text || $json.message?.caption || '').trim().replace(/,/g,'-') }},{{ $json.session_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5104,
+        1312
+      ],
+      "id": "9b235143-b62e-45a1-a937-e0951fc743d5",
+      "name": "Append Note",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        5104,
+        1472
+      ],
+      "id": "cd0f621c-11aa-4e10-a839-c2eebd43daf5",
+      "name": "Merge Session Context"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7b5258a4-2d74-402d-950c-4d187077ab14",
+              "name": "result",
+              "value": "=✅ KTA failid talletatud. Kuhu paigutan?",
+              "type": "string"
+            },
+            {
+              "id": "ea67ac6b-468e-4fe7-84f9-cd11dded6c0c",
+              "name": "text",
+              "value": "=Vali projekt nende failide jaoks:",
+              "type": "string"
+            },
+            {
+              "id": "1f52a1f2-2f4d-45f9-bc0f-a24b1bd59583",
+              "name": "reply_markup",
+              "value": "={{$json.reply_markup}}",
+              "type": "object"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        6992,
+        1312
+      ],
+      "id": "2eb7c61a-d1c5-4246-af3d-746d835f244c",
+      "name": "Tool Result"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH base AS (\n  SELECT a.project_id, MAX(a.created_at) AS last_use\n  FROM kta_attachments a\n  JOIN kta_sessions    s ON s.id = a.session_id\n  WHERE s.chat_id = $1::bigint\n    AND s.project_id IS NOT NULL\n  GROUP BY a.project_id\n),\nactive AS (\n  SELECT p.id, p.name, p.contract_no, b.last_use\n  FROM public.projects p\n  LEFT JOIN base b ON b.project_id = p.id\n),\nchoice AS (\n  SELECT a.id, a.name, a.contract_no, a.last_use\n  FROM active a\n  ORDER BY (a.last_use IS NULL), a.last_use DESC, a.name\n  LIMIT 3\n)\nSELECT\n  c.id,                      -- uuid\n  c.name,\n  c.contract_no,\n  COALESCE(NULLIF(c.contract_no, '') || ' — ', '') || c.name AS label\nFROM choice c;",
+        "options": {
+          "queryReplacement": "={{ [ $json.chat_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        6336,
+        1472
+      ],
+      "id": "0720ef09-2b9e-47fb-bf90-7b9a245415f4",
+      "name": "Top Projects for Keyboard",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Accept both shapes: one item with rows[] OR multiple row items\nlet candidates = [];\nif (Array.isArray($json.rows)) {\n  candidates = $json.rows;\n} else {\n  candidates = $items().flatMap(i => Array.isArray(i.json.rows) ? i.json.rows : [i.json]);\n}\n\n// Normalize to { id, text }\nconst projects = candidates\n  .map(r => {\n    const id = r.id || r.uuid; // tolerate both\n    const text = r.label || (r.contract_no ? `${r.contract_no} - ` : '') + (r.name || '');\n    return { id, text };\n  })\n  .filter(p => p.id && p.text)\n  .slice(0, 3);\n\nconst inline_keyboard = projects.map(p => ([\n  { text: p.text, callback_data: `set_project:${p.id}` }\n]));\ninline_keyboard.push([{ text: '📁 Jäta INBOX', callback_data: 'set_project:inbox' }]);\ninline_keyboard.push([{ text: '❌ Tühista',    callback_data: 'cancel' }]);\n\nreturn [{\n  text: 'Vali projekt nende failide jaoks:',\n  reply_markup: { inline_keyboard }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6560,
+        1472
+      ],
+      "id": "994c4c94-4b7f-4bfa-ae99-a0da9ec97b6d",
+      "name": "Build Keyboard"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "da8f02f0-8de0-4daa-9c61-716af220fedc",
+              "name": "chat_id",
+              "value": "={{ $json.chat_id || $json.message?.chat?.id || $json.callback_query?.message?.chat?.id }}",
+              "type": "string"
+            },
+            {
+              "id": "f5dad073-88e7-4c27-87c9-fd4b8277d4b0",
+              "name": "text",
+              "value": "={{ $json.text || $json.message?.caption || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "2adb33d6-1dd3-4108-a381-e5f000f44885",
+              "name": "has_photo",
+              "value": "={{ $json.has_photo ?? (Array.isArray($json.message?.photo) && $json.message.photo.length > 0) }}",
+              "type": "boolean"
+            },
+            {
+              "id": "0bc0d625-568a-4f84-a565-633c2916285d",
+              "name": "has_document",
+              "value": "={{ $json.has_document ?? !!$json.message?.document }}",
+              "type": "boolean"
+            },
+            {
+              "id": "2d8da7e0-dfae-40b9-87c8-e842b188fe71",
+              "name": "file_count",
+              "value": "={{ $json.file_count ?? (($json.message?.photo?.length || 0) + ($json.message?.document ? 1 : 0)) }}",
+              "type": "number"
+            },
+            {
+              "id": "d40ebd8d-2cae-4ab7-a767-1d7686103a9a",
+              "name": "has_file",
+              "value": "={{ \n  (($json.file_count || 0) > 0)\n  || (Array.isArray($json.message?.photo) && $json.message.photo.length > 0)\n  || !!$json.message?.document\n}}",
+              "type": "boolean"
+            },
+            {
+              "id": "25929550-b3ab-4927-aa61-290b3a21d7a0",
+              "name": "file_id",
+              "value": "={{ \n  $json.file_id\n  || ($json.message?.photo?.length ? $json.message.photo[$json.message.photo.length - 1].file_id : null)\n  || $json.message?.document?.file_id\n}}",
+              "type": "string"
+            },
+            {
+              "id": "9c8a5587-89f3-40e8-9bbd-81a04a234fd3",
+              "name": "tg_message_id",
+              "value": "={{ $json.tg_message_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "af94f339-5abf-4abc-a651-a67dd100a059",
+              "name": "tg_media_group_id",
+              "value": "={{ $json.tg_media_group_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "9cf54d7d-ea9d-4e9d-a006-966fd3093721",
+              "name": "file_unique_id",
+              "value": "={{ $json.file_unique_id || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3872,
+        1488
+      ],
+      "id": "45f893ec-da30-4f91-9028-df54ffb8093b",
+      "name": "Normalize Input"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select id,\n       array_length(notes_raw,1) as note_count,\n       notes_raw\nfrom kta_sessions\nwhere id = $1::uuid;",
+        "options": {
+          "queryReplacement": "=$1 (String) → {{ $json.id || $json.session_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5248,
+        1312
+      ],
+      "id": "6c5d59b2-636d-4b47-945d-321736c97ae5",
+      "name": "Select ID",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1c023668-2e28-4af7-9ac6-ca5a5031e0a5",
+              "name": "drive_file_id",
+              "value": "={{$json.id}}",
+              "type": "string"
+            },
+            {
+              "id": "9af0535e-379d-4767-9da6-f261c86ac997",
+              "name": "file_name",
+              "value": "={{$json.name || \"file\"}}",
+              "type": "string"
+            },
+            {
+              "id": "6d6c5843-5ce3-4c73-b3d5-18e194b379e7",
+              "name": "chat_id",
+              "value": "={{ Number($node[\"Normalize Input\"].json.chat_id) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        6112,
+        1472
+      ],
+      "id": "d53cee5b-898f-464d-934e-10dd606291f1",
+      "name": "DB Payload"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c53b111c-e31f-4b9f-ab83-34e301b3a4ff",
+              "name": "session_id",
+              "value": "={{ $('Session ID').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "732e5450-4d09-43f7-a544-99a4b4422140",
+              "name": "type",
+              "value": "={{\n  (() => {\n    const mt = $('Upload INBOX').item.json.mimeType || '';\n    if (/^image\\//.test(mt)) return 'photo';\n    if (mt === 'application/pdf') return 'pdf';\n    return 'other';\n  })()\n}}",
+              "type": "string"
+            },
+            {
+              "id": "d3aea6ea-d6d6-4ae4-b105-bf272cdc211f",
+              "name": "drive_file_id",
+              "value": "={{ $('Upload INBOX').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "ea141653-e43a-4f83-b512-f73aa276a826",
+              "name": "file_name",
+              "value": "={{ $('Upload INBOX').item.json.name || 'file' }}",
+              "type": "string"
+            },
+            {
+              "id": "0ba89250-aab5-4be3-aeee-011647cae3b3",
+              "name": "tg_message_id",
+              "value": "={{ $('Normalize Input').item.json.tg_message_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c847b58b-f628-4465-8e57-198453e8c0cf",
+              "name": "tg_media_group_id",
+              "value": "={{ $('Normalize Input').item.json.tg_media_group_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "434ca084-9cd2-4318-82d1-1768a5883896",
+              "name": "file_unique_id",
+              "value": "={{ $('Normalize Input').item.json.file_unique_id || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5664,
+        1472
+      ],
+      "id": "31ba74bb-540f-4fac-9fd2-2aa3dc3b98dd",
+      "name": "Set Fields"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.kta_attachments\n  (session_id, chat_id, tg_message_id, tg_media_group_id, tg_file_id, tg_file_unique_id, drive_file_id)\nVALUES (\n  NULLIF(NULLIF(NULLIF($1::text,''),'null'),'undefined')::bigint,\n  $2::bigint,\n  $3::bigint,\n  NULLIF(NULLIF(NULLIF($4::text,''),'null'),'undefined')::bigint,\n  $5::text,\n  $6::text,\n  $7::text\n)\nON CONFLICT (chat_id, tg_message_id, drive_file_id)\nDO UPDATE SET\n  tg_file_id        = EXCLUDED.tg_file_id,\n  tg_file_unique_id = EXCLUDED.tg_file_unique_id\nRETURNING id;",
+        "options": {
+          "queryReplacement": "={{$json.session_id ?? null}},\n{{$node[\"Normalize Input\"].json.chat_id}},\n{{$node[\"Normalize Input\"].json.tg_message_id}},\n{{$node[\"Normalize Input\"].json.tg_media_group_id ?? null}},\n{{$node[\"Normalize Input\"].json.file_id}},\n{{$node[\"Normalize Input\"].json.file_unique_id}},\n{{$node[\"Upload INBOX\"].json.id}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5888,
+        1472
+      ],
+      "id": "cfd3667d-dd35-426d-aa41-61d2435035a3",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Session ID": {
+      "main": [
+        [
+          {
+            "node": "Has Text?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Session Context",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Get a file": {
+      "main": [
+        [
+          {
+            "node": "Merge Session Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Paths": {
+      "main": [
+        [
+          {
+            "node": "Upload INBOX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload INBOX": {
+      "main": [
+        [
+          {
+            "node": "Set Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Open/Create Session": {
+      "main": [
+        [
+          {
+            "node": "Session ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has File?": {
+      "main": [
+        [
+          {
+            "node": "Get a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Text?": {
+      "main": [
+        [
+          {
+            "node": "Append Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Note": {
+      "main": [
+        [
+          {
+            "node": "Select ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Session Context": {
+      "main": [
+        [
+          {
+            "node": "Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Top Projects for Keyboard": {
+      "main": [
+        [
+          {
+            "node": "Build Keyboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Keyboard": {
+      "main": [
+        [
+          {
+            "node": "Tool Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Open/Create Session",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Has File?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select ID": {
+      "main": [
+        [
+          {
+            "node": "Tool Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB Payload": {
+      "main": [
+        [
+          {
+            "node": "Top Projects for Keyboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Fields": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "DB Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3ff8c8236d61fc15be87a593a452e66a1d21d618f6b7148e70b032539de22929"
+  }
+}
+
+
+
+
+
+{
+  "nodes": [
+    {
+      "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
@@ -29,46 +829,27 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        960,
-        -176
+        -368,
+        -352
       ],
       "id": "3dcc7661-c38c-4701-907f-3c52be1f10a8"
     },
     {
       "parameters": {
-        "keepOnlySet": true,
-        "values": {
-          "string": [
-            {
-              "name": "chatInput",
-              "value": "={{ $('Telegram Trigger').item.json.message.text }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "name": "Pass Text Body",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 2,
-      "position": [
-        1280,
-        -80
-      ],
-      "id": "afd2efbf-25ba-42aa-a4b3-24bc76268efc"
-    },
-    {
-      "parameters": {
+        "promptType": "define",
+        "text": "={{\n  ($json.chatInput || $json.text || '').trim()\n  || ($json.has_photo ? '[PHOTO]' : '')\n  || ($json.has_document ? '[DOCUMENT]' : '')\n  || '[EMPTY]'\n}}",
         "hasOutputParser": true,
+        "needsFallback": true,
         "options": {
-          "systemMessage": "You are KunnarAdmin, a construction company assistant.\n\nWhen you receive user input, you MUST use one of your available tools:\n\n1. Use the \"Diary Agent\" tool for:\n   - Work reports (user describing work done)\n   - Activity logging\n   - Construction progress updates\n\n2. Use the \"Calendar Agent\" tool for:\n   - Scheduling requests\n   - Calendar operations\n   - Time-based queries\n\n3. Use the \"Knowledge Agent\" tool for:\n   - Questions about past work/projects\n   - Looking up previous reports\n   - Searching company documentation\n   - \"What did we do last week?\" type queries\n\n4. Use other tools as needed for their specific purposes.\n\nALWAYS use a tool - do not provide direct responses without using tools.\n\n**RESPONSE COORDINATION:**\nWhen diary/note actions are completed:\n1. Give brief, friendly acknowledgment in Estonian\n2. Optionally add one relevant piece of contextual information\n3. Keep total response under 2 sentences\n4. Sound natural and conversational\n\n**GOOD RESPONSE PATTERNS:**\n- \"Panin kirja! [Optional: relevant context]\"\n- \"Märkisin üles. [Optional: gentle reminder]\"\n- \"Sain aru! [Optional: encouraging note]\"\n\n**AVOID:**\n- Repeating user input verbatim\n- Overly detailed confirmations\n- Robotic language\n- Long explanations of what was saved",
+          "systemMessage": "You are **KunnarAdmin**, a construction assistant in Telegram. Reply in **Estonian**, friendly and concise. **Never return JSON**.\n\n### Tools you can call\n1) **Diary Agent Tool** — log free-text work (“täna tegime…/paigaldasime…/vedasime…”). No follow-ups.\n2) **Calendar Agent Tool** — schedules/events (“täna/homme/mis kell…/sündmus/kalender”).\n3) **Knowledge Agent Tool** — “what’s been done” queries (project X, last week, yesterday, in <month>, “ülevaade”, “kokkuvõte”, “tabelist”, “logist”).\n4) **KTA Agent Tool** — **use when there are attachments or KTA keywords**. Saves Telegram photos/PDFs for Kaetud Töö Akt (KTA), uploads to Google Drive **KTA/INBOX**, records attachments in DB, and appends any caption to the active KTA session. **Pass the full current message payload unchanged.**\n\n### Routing rules (high priority)\n- **If `has_file=true` OR `has_photo=true` OR `has_document=true` → call “KTA Agent Tool” immediately.**\n- Else if schedule → Calendar Agent Tool.\n- Else if “what did we do / overview / kokkuvõte / tabelist / logist / mis tööd …” → Knowledge Agent Tool.\n- Else if the user describes work just done → Diary Agent Tool.\n- Else answer directly in Estonian.\n\n### After tool calls\nAlways send a short Estonian confirmation to the user, e.g.  \n“✅ KTA pildid salvestatud. Jätkan akti koostamist.” or  \n“✅ Uploaded to KTA/INBOX. Kas koostan KTA eelnõu?”\n\nIgnore any strings that look like templating: `{{` or `}}`.\n\nReturn an object: { text: string, reply_markup?: { inline_keyboard: ButtonRow[] } }.\nButtonRow = Button[]; Button = { text: string, callback_data: string }.\nDo not stringify reply_markup; keep it as an object.\n",
           "maxIterations": 5
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2.1,
       "position": [
-        2816,
-        -80
+        3504,
+        -352
       ],
       "id": "9e9b561b-d370-411a-b423-4751ca3987c8",
       "name": "Orchestrator",
@@ -76,25 +857,9 @@
     },
     {
       "parameters": {
-        "toolDescription": "You are CalendarAgent.\n",
-        "text": "={{$json.text}}",
-        "options": {
-          "systemMessage": "You are a professional Calendar Agent, an AI assistant designed to help manage and query calendar events efficiently.\n\n**LANGUAGE:**\n- ALWAYS respond in Estonian\n- Use professional Estonian business language\n- Maintain formal register appropriate for workplace communication\n\n**COMMUNICATION STYLE:**\n- Be professional, concise, and helpful\n- Use clear, business-appropriate Estonian language\n- Avoid overly casual expressions or slang\n- Use polite formal Estonian (avoid \"kuule\", \"tõesti\", etc.)\n- Provide accurate information in a structured format\n\n**DATE FORMATTING REQUIREMENTS:**\n- When users ask about specific dates, provide proper ISO datetime strings for API calls\n- Always use UTC timezone format: YYYY-MM-DDTHH:MM:SS.SSSZ\n- For single day queries, set:\n  - After: Start of day (00:00:00.000Z)\n  - Before: End of day (23:59:59.999Z)\n- Calculate appropriate date ranges for multi-day queries\n\n**RESPONSE FORMATTING:**\n- Present event information clearly and systematically\n- Include: event title, date, start time, end time, duration when relevant\n- Use consistent date/time formatting in responses\n- For multiple events, organize chronologically\n- If no events found, clearly state the searched date range\n\n**PROFESSIONAL ESTONIAN RESPONSE EXAMPLES:**\nInstead of: \"Kuule, kaheksandal augustil on meil tõesti 'Ehitame Kuuri' üritus, algus kell 12:30 ja lõpp kell 20:30 – tule kindlasti!\"\n\nUse: \"8. augustil on teil planeeritud üritus 'Ehitame Kuuri' ajal 12:30-20:30.\"\n\nOr: \"Teie kalendris on 8. augustil üks üritus: 'Ehitame Kuuri' kestusega 12:30 kuni 20:30 (8 tundi).\"\n\n**APPROPRIATE ESTONIAN PHRASES:**\n- \"Teie kalendris on...\"\n- \"8. augustil on planeeritud...\"\n- \"Järgmised üritused on...\"\n- \"Kalendrist leidub...\"\n- \"Määratud on järgmised kohtumised...\"\n- \"Tiimikoosolek on lisatud kalendrisse...\"\n- \"Üritus on edukalt loodud...\"\n\n**AVOID PHRASES THAT SOUND CONFIRMATORY:**\n- Avoid \"tõepoolest\" (sounds like confirming a question)\n- Avoid \"jah, on olemas\" (sounds like answering \"is there?\")\n- Use direct statements instead of confirmatory language\n\n**CURRENT CONTEXT:**\n- Today's date: Wednesday, August 06, 2025\n- User timezone: Europe/Tallinn (EET/EEST)\n- Convert local time references to UTC for API calls\n- Present times in user's local timezone in responses\n\n**QUERY HANDLING:**\n- Parse date requests accurately\n- Confirm date ranges when searching\n- Handle ambiguous dates by asking for clarification\n- Provide helpful context when appropriate\n\nMaintain professionalism while being genuinely helpful and efficient."
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.agentTool",
-      "typeVersion": 2.2,
-      "position": [
-        2608,
-        608
-      ],
-      "id": "2e363e96-4aec-4334-a543-964fc2055ea0",
-      "name": "Calendar Agent"
-    },
-    {
-      "parameters": {
         "updates": [
-          "message"
+          "message",
+          "callback_query"
         ],
         "additionalFields": {
           "download": true
@@ -103,8 +868,8 @@
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1.2,
       "position": [
-        -288,
-        -176
+        -1968,
+        -352
       ],
       "id": "1b0f1897-2c68-4e08-baa8-0579c09502df",
       "name": "Telegram Trigger",
@@ -125,8 +890,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        1280,
-        -272
+        -16,
+        -464
       ],
       "id": "9139be6a-363f-4bed-8e9f-23f0b8977e7e",
       "name": "Get a file",
@@ -139,25 +904,47 @@
       }
     },
     {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1,
+      "position": [
+        2704,
+        112
+      ],
+      "id": "691894cc-f43c-4b86-85c5-c87bca0df18a",
+      "name": "Think"
+    },
+    {
       "parameters": {
-        "model": {
+        "modelId": {
           "__rl": true,
-          "value": "gpt-4o-mini",
+          "value": "chatgpt-4o-latest",
           "mode": "list",
-          "cachedResultName": "gpt-4o-mini"
+          "cachedResultName": "CHATGPT-4O-LATEST"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.text }}"
+            },
+            {
+              "content": "=You are TranscriptCleaner. Fix obvious Estonian ASR errors and punctuation. Capitalise product names (Betokontakt, Knauf, Sakret). Do not add or remove content. Output only the corrected text.\n\nEXAMPLES:\n  INPUT: \"Rubetsi kummimat\"\n  OUTPUT: \"Rubexi kummimatt\"   (Rubetsi → Rubexi)\n  INPUT: \"15 millimeri\"\n  OUTPUT: \"15 mm\"              (millimeri → mm)\n\nAlso operate based on the following:\n\nconst dict = {\n  \"rubezi\": \"Rubexi\",\n  \"kummikomat\": \"kummimatt\",\n  \"põhublatd\": \"põhuplaadi\",\n  \"kübar kargass\": \"kübar­karkass\",\n}; etc\n\nlet txt = item.text.toLowerCase();\nfor (const [wrong, right] of Object.entries(dict)) {\n  const re = new RegExp(`\\\\b${wrong}\\\\b`, \"gi\");\n  txt = txt.replace(re, right);\n}\nitem.text = txt;\nreturn item;\n\nhere is {{$json.text}} context-based vocabulary.\n\nIf you see “betokontakt”, capitalise as “Betokontakt”.  \nCorrect obvious misspellings of product names in parentheses:\n(knauf→Knauf, sakret→Sakret, ...)\n\nuse your critical thinking. For example \"viidi palju kipsplaatiga minema\" is obviously \"viidi palju kipsplaati ka minema\"\n\nReturn the corrected sentence only, with no markup, no <fix> tags, no commentary.",
+              "role": "system"
+            }
+          ]
         },
         "options": {
           "temperature": 0
         }
       },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
       "position": [
-        1360,
-        320
+        1632,
+        -480
       ],
-      "id": "94f35ab0-1f43-450d-bde1-c99581e2a60b",
-      "name": "OpenAI Chat Model",
+      "id": "b6e53237-c3b1-46c3-91e6-6fc9a1ae2461",
+      "name": "Transcript Cleaner",
       "credentials": {
         "openAiApi": {
           "id": "fBTScw6f4Kra5Opb",
@@ -166,15 +953,556 @@
       }
     },
     {
-      "parameters": {},
-      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "263c4baf-c61b-4648-bbd8-ac522258ce96",
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            },
+            {
+              "id": "46bd5686-0c4a-4efd-849e-8c8de2906a5f",
+              "name": "input",
+              "value": "={{ $json.payload?.text || $json.payload?.query || $json.chatInput || $json.text || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "c0dc6913-a3a3-4fc5-bcb7-7f177b037cc0",
+              "name": "agent",
+              "value": "={{ $json.output.agent }}",
+              "type": "string"
+            },
+            {
+              "id": "9a060fc0-dd02-4697-b206-a3ff58261bff",
+              "name": "status",
+              "value": "={{ $json.error ? 'error' : 'ok' }}",
+              "type": "string"
+            },
+            {
+              "id": "b8bbdc72-fc40-47b1-b4ad-a9998a923414",
+              "name": "output",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            },
+            {
+              "id": "e5b86f6c-07c2-4059-aba0-5db3cc2763ff",
+              "name": "final_response",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            },
+            {
+              "id": "bbe4c08b-9dfc-49f8-9caf-7fec50202bde",
+              "name": "reply_markup",
+              "value": "={{ $json.reply_markup }}",
+              "type": "object"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4112,
+        -352
+      ],
+      "id": "c0b20d52-f2e3-4a4b-b3f8-ad74a56fd2bf",
+      "name": "Set Results"
+    },
+    {
+      "parameters": {
+        "url": "https://gist.githubusercontent.com/GunnarHeinamaa/4c6a9e90eea76b829b6881388a4430b5/raw",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -976,
+        -352
+      ],
+      "id": "33674901-489b-4118-8175-e502cf52b1a0",
+      "name": "Get Vocabulary"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "whisper-1"
+            },
+            {
+              "name": "language",
+              "value": "et"
+            },
+            {
+              "name": "prompt",
+              "value": "=\"The following recording contains Estonian construction terms: \" + $node[\"Ingest Vocab\"].json.prompt"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        -464
+      ],
+      "id": "3db35fce-e45e-4b36-8165-c7763340b4f9",
+      "name": "Whisper",
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "# CALENDAR AGENT \n",
+        "height": 464,
+        "width": 416,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        1504,
-        320
+        2960,
+        -48
       ],
-      "id": "691894cc-f43c-4b86-85c5-c87bca0df18a",
-      "name": "Think"
+      "id": "a74b1fd9-d235-4168-a5d9-5f58ab62341f",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "# DIARY AGENT \n",
+        "height": 464,
+        "width": 416,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3392,
+        -48
+      ],
+      "id": "8fc9af72-db8e-44cf-b40d-bede2ab41d11",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "unified-text",
+              "name": "chatInput",
+              "value": "={{ ($json.chatInput || $json.message?.text || $json.text || $node[\"Telegram Trigger\"].json.message?.text || '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "unified-chatInput",
+              "name": "text",
+              "value": "={{ $node[\"Telegram Trigger\"].json.message?.caption\n|| $node[\"Telegram Trigger\"].json.message?.text\n|| $node[\"Telegram Trigger\"].json.callback_query?.message?.caption\n|| $node[\"Telegram Trigger\"].json.callback_query?.message?.text\n|| '' }}",
+              "type": "string"
+            },
+            {
+              "id": "input-source",
+              "name": "inputSource",
+              "value": "={{$node[\"Telegram Trigger\"].json.message?.voice ? 'voice' : 'text'}}",
+              "type": "string"
+            },
+            {
+              "id": "28005e95-8c70-4f13-ada8-36212f4cb21c",
+              "name": "file_id",
+              "value": "={{ $node[\"Telegram Trigger\"].json.message?.document?.file_id\n|| $node[\"Telegram Trigger\"].json.callback_query?.message?.document?.file_id\n|| (($node[\"Telegram Trigger\"].json.message?.photo?.length || 0)\n      ? $node[\"Telegram Trigger\"].json.message.photo[\n          $node[\"Telegram Trigger\"].json.message.photo.length - 1\n        ].file_id\n      : '')\n|| (($node[\"Telegram Trigger\"].json.callback_query?.message?.photo?.length || 0)\n      ? $node[\"Telegram Trigger\"].json.callback_query.message.photo[\n          $node[\"Telegram Trigger\"].json.callback_query.message.photo.length - 1\n        ].file_id\n      : '') }}",
+              "type": "string"
+            },
+            {
+              "id": "60098a2e-a1f7-487d-b040-3aadb53b356b",
+              "name": "file_unique_id",
+              "value": "={{ $node[\"Telegram Trigger\"].json.message?.document?.file_unique_id\n|| $node[\"Telegram Trigger\"].json.callback_query?.message?.document?.file_unique_id\n|| (($node[\"Telegram Trigger\"].json.message?.photo?.length || 0)\n      ? $node[\"Telegram Trigger\"].json.message.photo[\n          $node[\"Telegram Trigger\"].json.message.photo.length - 1\n        ].file_unique_id\n      : '')\n|| (($node[\"Telegram Trigger\"].json.callback_query?.message?.photo?.length || 0)\n      ? $node[\"Telegram Trigger\"].json.callback_query.message.photo[\n          $node[\"Telegram Trigger\"].json.callback_query.message.photo.length - 1\n        ].file_unique_id\n      : '') }}",
+              "type": "string"
+            },
+            {
+              "id": "1c3bca5e-c1da-494a-bdcb-9869af0a3bd1",
+              "name": "has_file",
+              "value": "={{ (($node[\"Telegram Trigger\"].json.message?.photo?.length || 0)\n   + ($node[\"Telegram Trigger\"].json.callback_query?.message?.photo?.length || 0)) > 0\n || !!($node[\"Telegram Trigger\"].json.message?.document\n     || $node[\"Telegram Trigger\"].json.callback_query?.message?.document) }}",
+              "type": "boolean"
+            },
+            {
+              "id": "ebbc6aad-ba4d-4e67-81e1-02cbae2bac4d",
+              "name": "chat_id",
+              "value": "={{ $node[\"Telegram Trigger\"].json.message?.chat?.id\n|| $node[\"Telegram Trigger\"].json.callback_query?.message?.chat?.id\n|| $node[\"Telegram Trigger\"].json.chat?.id\n|| 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "7ff9b6e6-583a-494d-84f0-d2be6809babf",
+              "name": "has_photo",
+              "value": "={{ (Array.isArray($node[\"Telegram Trigger\"].json.message?.photo)\n    && $node[\"Telegram Trigger\"].json.message.photo.length > 0)\n || (Array.isArray($node[\"Telegram Trigger\"].json.callback_query?.message?.photo)\n    && $node[\"Telegram Trigger\"].json.callback_query.message.photo.length > 0) }}",
+              "type": "boolean"
+            },
+            {
+              "id": "863de101-c766-4ee8-a64c-0326f290e0fb",
+              "name": "has_document",
+              "value": "={{ !!($node[\"Telegram Trigger\"].json.message?.document\n   || $node[\"Telegram Trigger\"].json.callback_query?.message?.document) }}",
+              "type": "boolean"
+            },
+            {
+              "id": "71a9560b-e3e9-4ed5-9bde-03a92af201b4",
+              "name": "file_count",
+              "value": "={{ ($node[\"Telegram Trigger\"].json.message?.photo?.length\n   || $node[\"Telegram Trigger\"].json.callback_query?.message?.photo?.length\n   || 0)\n + ($node[\"Telegram Trigger\"].json.message?.document ? 1 : 0)\n + ($node[\"Telegram Trigger\"].json.callback_query?.message?.document ? 1 : 0) }}",
+              "type": "number"
+            },
+            {
+              "id": "c71a06c4-704e-4778-9b59-e295d5b69722",
+              "name": "kta_trigger",
+              "value": "={{ /(?:\\b|^)(kta\\s*pildid|akti\\s*foto|kaetud\\s*töö\\s*akti\\s*pildid|ktas?\\s*photos?|covered\\s*work\\s*act\\s*photos?)(?:\\b|$)/i\n   .test($node[\"Telegram Trigger\"].json.message?.text || '') }}",
+              "type": "boolean"
+            },
+            {
+              "id": "b51d74d7-5e80-4494-b5e1-674d0441b78d",
+              "name": "author",
+              "value": "={{ (($node[\"Telegram Trigger\"].json.message.from.first_name || '') + ' ' + ($node[\"Telegram Trigger\"].json.message.from.last_name || '')).trim() || ($node[\"Telegram Trigger\"].json.message.from.username ? '@' + $node[\"Telegram Trigger\"].json.message.from.username : '') }}",
+              "type": "string"
+            },
+            {
+              "id": "e4894c1b-1012-4331-b092-5880a355c7b6",
+              "name": "tg_message_id",
+              "value": "={{ $node[\"Telegram Trigger\"].json.message?.message_id\n|| $node[\"Telegram Trigger\"].json.callback_query?.message?.message_id\n|| null }}",
+              "type": "string"
+            },
+            {
+              "id": "5066f5b5-f968-4e76-9b24-02b87c692a00",
+              "name": "tg_media_group_id",
+              "value": "={{ \n  $node[\"Telegram Trigger\"].json.message?.media_group_id ||\n  $node[\"Telegram Trigger\"].json.edited_message?.media_group_id ||\n  $node[\"Telegram Trigger\"].json.channel_post?.media_group_id ||\n  $node[\"Telegram Trigger\"].json.callback_query?.message?.media_group_id ||\n  ''\n}}",
+              "type": "string"
+            },
+            {
+              "id": "bf56c235-5b49-44d6-958b-6e6247161721",
+              "name": "is_callback",
+              "value": "={{ ($node['Normalize TG Update'].json.is_callback === true)\n   || ($node['Normalize TG Update'].json.inputSource === 'callback')\n   || !!$node['Normalize TG Update'].json.callback_query_id }}",
+              "type": "boolean"
+            },
+            {
+              "id": "70233253-1336-4be4-8e4d-0a5a1b13d09e",
+              "name": "callback_query_id",
+              "value": "={{ $json.callback_query_id || $node[\"Telegram Trigger\"].json.callback_query?.id }}",
+              "type": "string"
+            },
+            {
+              "id": "67bcfffc-4267-4e57-bd11-648e3d30d90f",
+              "name": "chat_instance",
+              "value": "={{ $json.chat_instance || $node[\"Telegram Trigger\"].json.callback_query?.chat_instance }}",
+              "type": "string"
+            },
+            {
+              "id": "e4d67819-44a3-4d78-ad0b-7f004edd5645",
+              "name": "data",
+              "value": "={{ $json.data || $node[\"Telegram Trigger\"].json.callback_query?.data }}",
+              "type": "string"
+            },
+            {
+              "id": "9494c250-75d9-4d81-b93a-d6b050b6d075",
+              "name": "message_id",
+              "value": "={{$json.callback_query?.message?.message_id || $json.message?.message_id}}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2128,
+        -224
+      ],
+      "id": "d69fe3b3-2169-4fb9-b019-c468a699ae84",
+      "name": "Normalize Input"
+    },
+    {
+      "parameters": {
+        "content": "# KNOWLEDGE AGENT \n",
+        "height": 464,
+        "width": 416,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3824,
+        -48
+      ],
+      "id": "10bc04a5-0822-496e-a936-160e6afcc4de",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "# TELEGRAM MESSAGE \n",
+        "height": 608,
+        "width": 944,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2064,
+        -528
+      ],
+      "id": "9bf512b4-bdbc-4deb-b1d5-9ee480b86040",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "## INGEST VOCAB \n",
+        "height": 464,
+        "width": 272
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -736,
+        -528
+      ],
+      "id": "ee9f2144-299b-4a4b-b6a1-a686f046d38f",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "## INDUSTRY SPECIFIC VOCAB\n500 Words, Estonian\n",
+        "height": 464,
+        "width": 352
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1104,
+        -528
+      ],
+      "id": "bfe82177-79af-4aee-8b71-699ccd19ba2c",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "## TEXT OR VOICE? \n",
+        "height": 464,
+        "width": 256,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        -528
+      ],
+      "id": "74311513-f062-4001-a0af-3bd9cf7da4b2",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f861bb6c-9073-4448-8fb3-74d62d507e1f",
+              "name": "prompt",
+              "value": "={{ \n\"The following recording contains Estonian construction terms: \" +\n$node[\"Get Vocabulary\"].json.data\n  .split('\\n')\n  .filter(w => w.length > 3)              // drop very short tokens\n  .filter((w,i,a) => a.indexOf(w) === i)  // unique\n  .slice(0, 80)                           // keep first 80 words\n  .join(', ')\n}}\n",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -656,
+        -352
+      ],
+      "id": "d40c97c8-5abf-414f-a0f7-24a56229ac4b",
+      "name": "Ingest Vocab"
+    },
+    {
+      "parameters": {
+        "content": "## DL AUDIO FILE\n",
+        "height": 224,
+        "width": 416
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        -528
+      ],
+      "id": "f5fa1898-1dcb-46ba-ad89-fcca2e0b9c3c",
+      "name": "Sticky Note10"
+    },
+    {
+      "parameters": {
+        "content": "## PASS TEXT\n",
+        "height": 224,
+        "width": 416
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        -288
+      ],
+      "id": "85538bce-e77b-4b44-816a-2481605a4e74",
+      "name": "Sticky Note11"
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "chatInput",
+              "value": "={{ $('Telegram Trigger').item.json.message.text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Pass Text Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        112,
+        -224
+      ],
+      "id": "afd2efbf-25ba-42aa-a4b3-24bc76268efc"
+    },
+    {
+      "parameters": {
+        "content": "## TRANSCRIBE AUDIO\n",
+        "height": 464,
+        "width": 1152
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        256,
+        -528
+      ],
+      "id": "ae7aa12d-6690-4954-8bf3-85c4ee5694d3",
+      "name": "Sticky Note12"
+    },
+    {
+      "parameters": {
+        "content": "## CLEAN/FIX TRANSCRIPT\n",
+        "height": 464,
+        "width": 480
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1424,
+        -528
+      ],
+      "id": "acadbac2-80a7-470a-b12e-d1782aac6653",
+      "name": "Sticky Note13"
+    },
+    {
+      "parameters": {
+        "content": "## SET INPUT\n",
+        "height": 272,
+        "width": 1456
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        -336
+      ],
+      "id": "fb9369c1-7b31-4d0b-a806-2aa2f7ac14fb",
+      "name": "Sticky Note15"
+    },
+    {
+      "parameters": {
+        "content": "# ORCHESTRATOR AGENT\n",
+        "height": 464,
+        "width": 416,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3392,
+        -528
+      ],
+      "id": "cd83e32a-a6bb-4c21-b07f-588bda11e84d",
+      "name": "Sticky Note14"
+    },
+    {
+      "parameters": {
+        "content": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n## ORCHESTRATOR BRAIN AND SHORT TERM MEMORY\n",
+        "height": 464,
+        "width": 416,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2528,
+        -48
+      ],
+      "id": "98c15847-03d2-4594-8a3a-ee45dc8cbda2",
+      "name": "Sticky Note16"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2608,
+        176
+      ],
+      "id": "94f35ab0-1f43-450d-bde1-c99581e2a60b",
+      "name": "Orchestrator Brain",
+      "credentials": {
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
+        }
+      }
     },
     {
       "parameters": {
@@ -192,9 +1520,9 @@
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "id": "={{ $('Telegram Trigger').item.json.update_id }}",
+            "id": "={{$node[\"Telegram Trigger\"].json.update_id}}",
             "created_at": "={{ $now }}",
-            "message": "={{ $('Set User Prompt 1').item.json.chatInput }}"
+            "message": "={{ $('Normalize Input').item.json.inputSource }}"
           },
           "matchingColumns": [
             "id"
@@ -234,16 +1562,18 @@
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         },
-        "options": {}
+        "options": {
+          "skipOnConflict": true
+        }
       },
       "type": "n8n-nodes-base.postgresTool",
       "typeVersion": 2.6,
       "position": [
-        1648,
-        320
+        2800,
+        176
       ],
       "id": "6bd160c5-b4e6-4122-bd38-359442709f6d",
-      "name": "Insert rows in a table in Postgres",
+      "name": "Short Term Memory",
       "credentials": {
         "postgres": {
           "id": "7oiSz999PCdpxVvM",
@@ -253,596 +1583,132 @@
     },
     {
       "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "gpt-4-turbo",
-          "mode": "list",
-          "cachedResultName": "gpt-4-turbo"
-        },
-        "options": {}
+        "content": "## SET FINAL RESULTS\n",
+        "height": 464,
+        "width": 416,
+        "color": 2
       },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
-      "position": [
-        1392,
-        912
-      ],
-      "id": "377dc313-b03d-4878-9370-d26bac412369",
-      "name": "OpenAI Chat Model1",
-      "credentials": {
-        "openAiApi": {
-          "id": "fBTScw6f4Kra5Opb",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "gpt-4-turbo",
-          "mode": "list",
-          "cachedResultName": "gpt-4-turbo"
-        },
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
-      "position": [
-        2320,
-        800
-      ],
-      "id": "a0ac8bce-b80a-4e85-b6a2-56709f8c0d39",
-      "name": "OpenAI Chat Model2",
-      "credentials": {
-        "openAiApi": {
-          "id": "fBTScw6f4Kra5Opb",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $node[\"Telegram Trigger\"].json.message.chat.id }}",
-        "text": "={{ $json.message.content }}",
-        "additionalFields": {
-          "appendAttribution": false
-        }
-      },
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        3936,
-        -80
-      ],
-      "id": "a23e20a7-4785-407d-9d74-bbad168a73cc",
-      "name": "Reply to User",
-      "webhookId": "4219a6e2-f275-43a6-8854-edebc84ffce1",
-      "credentials": {
-        "telegramApi": {
-          "id": "ysvpOgV3wwAx3KvP",
-          "name": "Telegram account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "modelId": {
-          "__rl": true,
-          "value": "chatgpt-4o-latest",
-          "mode": "list",
-          "cachedResultName": "CHATGPT-4O-LATEST"
-        },
-        "messages": {
-          "values": [
-            {
-              "content": "={{ $json.text }}"
-            },
-            {
-              "content": "=SYSTEM:\nYou are TranscriptCleaner.\nLanguage must stay Estonian.\nOnly fix obvious ASR errors & punctuation, keep construction jargon intact - UNLESS the transcriber picked up a non-word - then use common sense and critical thinking to fill in the blank or replace an anomaly\nWrap every changed word in <fix></fix>.\nDo NOT shorten, add or remove content.\nEXAMPLES:\n  INPUT: \"Rubetsi kummimatt\"\n  OUTPUT: \"Rubexi kummimatt\"   (Rubetsi → Rubexi)\n  INPUT: \"15 millimeri\"\n  OUTPUT: \"15 mm\"              (millimeri → mm)\n\nAlso operate based on the following:\n\nconst dict = {\n  \"rubezi\": \"Rubexi\",\n  \"kummikomat\": \"kummimatt\",\n  \"põhublatd\": \"põhuplaadi\",\n  \"kübar kargass\": \"kübar­karkass\",\n}; etc\n\nlet txt = item.text.toLowerCase();\nfor (const [wrong, right] of Object.entries(dict)) {\n  const re = new RegExp(`\\\\b${wrong}\\\\b`, \"gi\");\n  txt = txt.replace(re, right);\n}\nitem.text = txt;\nreturn item;\n\nhere is {{ $('Get Vocabulary').item.json.data }} context-based vocabulary.\n\nIf you see “betokontakt”, capitalise as “Betokontakt”.  \nCorrect obvious misspellings of product names in parentheses:\n(knauf→Knauf, sakret→Sakret, ...)\n\nuse your critical thinking. For example \"viidi palju kipsplaatiga minema\" is obviously \"viidi palju kipsplaati ka minema\"\n\nReturn the corrected sentence only, with no markup, no <fix> tags, no commentary.",
-              "role": "system"
-            }
-          ]
-        },
-        "options": {
-          "temperature": 0
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 1.8,
-      "position": [
-        1824,
-        -272
-      ],
-      "id": "b6e53237-c3b1-46c3-91e6-6fc9a1ae2461",
-      "name": "Transcript Cleaner",
-      "credentials": {
-        "openAiApi": {
-          "id": "fBTScw6f4Kra5Opb",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "tableId": "diaryagententries",
-        "fieldsUi": {
-          "fieldValues": [
-            {
-              "fieldId": "timestamp",
-              "fieldValue": "={{ new Date().toISOString() }}"
-            },
-            {
-              "fieldId": "author",
-              "fieldValue": "={{ $('Telegram Trigger').item.json.message.from.first_name }} {{ $('Telegram Trigger').item.json.message.from.last_name }}"
-            },
-            {
-              "fieldId": "text",
-              "fieldValue": "={{$json.text}}"
-            }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.supabaseTool",
+      "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        1568,
-        912
+        3824,
+        -528
       ],
-      "id": "5e7693c4-4931-4176-ac36-efe1b55f740c",
-      "name": "Create a row in Supabase",
-      "credentials": {
-        "supabaseApi": {
-          "id": "auGOK59p7RmaXXjU",
-          "name": "Supabase account"
-        }
-      }
+      "id": "2a527220-f4ac-4bdf-b626-8a489b7b0786",
+      "name": "Sticky Note17"
     },
     {
       "parameters": {
-        "jsonSchemaExample": "{ \"agent\": \"Calendar\", \"payload\": { \"query\": \"…\" } }\n",
-        "autoFix": true
+        "content": "## COMPOSE REPLY\n",
+        "height": 576,
+        "width": 464,
+        "color": 2
       },
-      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
-      "typeVersion": 1.3,
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
       "position": [
-        3072,
-        96
+        4256,
+        -528
       ],
-      "id": "011f4f76-b017-466a-ab94-879eba9ebf32",
-      "name": "Orchestrator Output Parser"
+      "id": "fe7bce93-e335-4aae-a9b2-d4df248d0bc9",
+      "name": "Sticky Note18"
     },
     {
       "parameters": {
-        "calendar": {
-          "__rl": true,
-          "value": "gunnar@pohuplaat.ee",
-          "mode": "list",
-          "cachedResultName": "gunnar@pohuplaat.ee"
-        },
-        "start": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start', ``, 'string') }}",
-        "end": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End', ``, 'string') }}",
-        "useDefaultReminders": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Use_Default_Reminders', ``, 'boolean') }}",
-        "additionalFields": {
-          "summary": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Summary', ``, 'string') }}"
-        }
+        "content": "# REPLY TO USER\n",
+        "height": 576,
+        "width": 1728,
+        "color": 4
       },
-      "type": "n8n-nodes-base.googleCalendarTool",
-      "typeVersion": 1.3,
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
       "position": [
-        2928,
-        1088
+        4736,
+        -528
       ],
-      "id": "316d58ae-81e9-4322-a9cd-7a99d590b6d7",
-      "name": "Create an event in Google Calendar",
-      "credentials": {
-        "googleCalendarOAuth2Api": {
-          "id": "hVqOm7BhmzffHr8V",
-          "name": "Google Calendar account"
-        }
-      }
+      "id": "9c33b2bb-0cc3-42c1-8b16-530be2a7712a",
+      "name": "Sticky Note19"
     },
     {
       "parameters": {
-        "operation": "delete",
-        "calendar": {
-          "__rl": true,
-          "value": "gunnar@pohuplaat.ee",
-          "mode": "list",
-          "cachedResultName": "gunnar@pohuplaat.ee"
-        },
-        "eventId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Event_ID', ``, 'string') }}",
-        "options": {}
+        "content": "# KTA AGENT (WIP)\n",
+        "height": 352,
+        "width": 416,
+        "color": 7
       },
-      "type": "n8n-nodes-base.googleCalendarTool",
-      "typeVersion": 1.3,
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
       "position": [
-        2576,
-        992
+        3824,
+        432
       ],
-      "id": "58630942-55c6-43f2-9206-7b72435e68e8",
-      "name": "Delete an event in Google Calendar",
-      "credentials": {
-        "googleCalendarOAuth2Api": {
-          "id": "hVqOm7BhmzffHr8V",
-          "name": "Google Calendar account"
-        }
-      }
+      "id": "b1832bbf-ff6b-489e-a91d-a9272bb88156",
+      "name": "Sticky Note22"
     },
     {
       "parameters": {
-        "operation": "get",
-        "calendar": {
-          "__rl": true,
-          "value": "gunnar@pohuplaat.ee",
-          "mode": "list",
-          "cachedResultName": "gunnar@pohuplaat.ee"
-        },
-        "eventId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Event_ID', ``, 'string') }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.googleCalendarTool",
-      "typeVersion": 1.3,
-      "position": [
-        2672,
-        1088
-      ],
-      "id": "876c2c37-c351-4483-8366-b620de741992",
-      "name": "Get an event in Google Calendar",
-      "credentials": {
-        "googleCalendarOAuth2Api": {
-          "id": "hVqOm7BhmzffHr8V",
-          "name": "Google Calendar account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "getAll",
-        "calendar": {
-          "__rl": true,
-          "value": "gunnar@pohuplaat.ee",
-          "mode": "list",
-          "cachedResultName": "gunnar@pohuplaat.ee"
-        },
-        "returnAll": "=true",
-        "timeMin": "={{ new Date().toISOString().split('T')[0] }}T00:00:00.000Z",
-        "timeMax": "={{ new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0] }}T23:59:59.999Z",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.googleCalendarTool",
-      "typeVersion": 1.3,
-      "position": [
-        2464,
-        880
-      ],
-      "id": "a6ec0a79-e23a-435e-b3b2-281a5f92c519",
-      "name": "Get many events in Google Calendar",
-      "credentials": {
-        "googleCalendarOAuth2Api": {
-          "id": "hVqOm7BhmzffHr8V",
-          "name": "Google Calendar account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "update",
-        "calendar": {
-          "__rl": true,
-          "value": "gunnar@pohuplaat.ee",
-          "mode": "list",
-          "cachedResultName": "gunnar@pohuplaat.ee"
-        },
-        "eventId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Event_ID', ``, 'string') }}",
-        "useDefaultReminders": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Use_Default_Reminders', ``, 'boolean') }}",
-        "updateFields": {}
-      },
-      "type": "n8n-nodes-base.googleCalendarTool",
-      "typeVersion": 1.3,
-      "position": [
-        2800,
-        1136
-      ],
-      "id": "540b84fc-ec5f-4e9e-b2ac-acba3bb28ea7",
-      "name": "Update an event in Google Calendar",
-      "credentials": {
-        "googleCalendarOAuth2Api": {
-          "id": "hVqOm7BhmzffHr8V",
-          "name": "Google Calendar account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "toolDescription": "Stores diary entry in Supabase and returns JSON {diary_id}\n\nSupabaseInsert({\n  \"timestamp\": \"<ISO now>\",\n  \"author\": \"<user_id>\",\n  \"text\": \"<text>\"\n})",
-        "text": "={{$json.text}}",
-        "options": {
-          "systemMessage": "You are a helpful personal assistant that manages notes, thoughts, and diary entries in Estonian.\n\nWhen recording diary entries, you MUST use BOTH tools:\n1. \"Create a row in Supabase\" for primary storage\n2. \"Append row in sheet in Google Sheets\" for backup logging\nAlways use both tools for every diary entry to ensure redundant storage!\n\n**COMMUNICATION STYLE:**\n- Be friendly, natural, and conversational in Estonian\n- Use warm, encouraging language\n- Sound like a helpful colleague, not a robot\n- Keep responses concise but personable\n\n**WHEN RECORDING NOTES/THOUGHTS:**\nAfter successfully saving information, respond with variations like:\n- \"Väga hea, panin kirja!\"\n- \"Sain aru, märkisin üles!\"\n- \"Kirjas! Anna teada, kui küsimusi tekib.\"\n- \"Hästi, lisasin märkmetesse!\"\n\n**PROACTIVE ASSISTANCE:**\nWhen appropriate, add helpful context or reminders:\n- Check if there are related upcoming calendar events\n- Mention relevant deadlines or meetings\n- Offer gentle reminders about related tasks\n\n\n\n**EXAMPLE ENHANCED RESPONSES:**\nInstead of: \"Tore, et saime prügi välja viia, koerakuudi valmis ehitada ja veel neli kukerpalli ka teha!\"\n\nBetter options:\n1. Simple: \"Väga hea, panin kirja! Anna teada, kui küsimusi tekib.\"\n2. With context: \"Väga hea, panin kirja! Kui juba siin oled, tuletan igaks juhuks meelde, et esmaspäeval on tiimikoosolek kell 10.\"\n3. Encouraging: \"Suurepärane päev! Panin kõik kirja. Hoian pöialt edasiseks!\"\n\n**TONE GUIDELINES:**\n- Supportive and positive\n- Natural Estonian conversation style\n- Professional but warm\n- Avoid overly formal language\n- Don't repeat back everything the user said\n"
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.agentTool",
-      "typeVersion": 2.2,
-      "position": [
-        1632,
-        608
-      ],
-      "id": "a5cf4154-0208-4f6c-b77f-7b35fcc8750c",
-      "name": "Diary Agent"
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "263c4baf-c61b-4648-bbd8-ac522258ce96",
-              "name": "timestamp",
-              "value": "={{ new Date().toISOString() }}",
-              "type": "string"
-            },
-            {
-              "id": "46bd5686-0c4a-4efd-849e-8c8de2906a5f",
-              "name": "input",
-              "value": "{{ $json.chatInput }}",
-              "type": "string"
-            },
-            {
-              "id": "c0dc6913-a3a3-4fc5-bcb7-7f177b037cc0",
-              "name": "agent",
-              "value": "{{ $json.agent }}",
-              "type": "string"
-            },
-            {
-              "id": "9a060fc0-dd02-4697-b206-a3ff58261bff",
-              "name": "status",
-              "value": "{{ $json.error ? 'error' : 'ok' }}",
-              "type": "string"
-            },
-            {
-              "id": "b8bbdc72-fc40-47b1-b4ad-a9998a923414",
-              "name": "output",
-              "value": "={{ JSON.stringify($json) }}",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        3216,
-        -80
-      ],
-      "id": "c0b20d52-f2e3-4a4b-b3f8-ad74a56fd2bf",
-      "name": "Set Results"
-    },
-    {
-      "parameters": {
-        "modelId": {
-          "__rl": true,
-          "value": "gpt-4o-mini",
-          "mode": "list",
-          "cachedResultName": "GPT-4O-MINI"
-        },
-        "messages": {
-          "values": [
-            {
-              "content": "=Prompt kasutajalt:\n{{ $('Orchestrator').item.json.output.payload.query }}\n\nSisu, mille põhjal talle vastame:\n{{ JSON.stringify($json) }}\t"
-            },
-            {
-              "content": "You are ComposeReply for a construction company knowledge system.\n\nYou will receive JSON data containing work reports or project information found in company records.\n\nYour job:\n1. Extract the key information (dates, locations, work done)\n2. Present it naturally in Estonian \n3. Be helpful and informative, not just confirming\n4. Don't be corporate - talk like a normal person in construction\n5. If multiple work entries, mention the most relevant ones\n\nExample good response:\n\"18. aprillil tegime Valtu spordimaja renoveerimist - paigaldasime isolatsiooni ja tegime viimistlustöid. 21. aprillil jätkasime kontrolltöödega.\"\n\nDON'T just say \"Leidsin infot\" - actually tell them WHAT was found!",
-              "role": "system"
-            }
-          ]
-        },
-        "options": {
-          "temperature": 0.7
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 1.8,
-      "position": [
-        3440,
-        -80
-      ],
-      "id": "1a70b9cf-fa6b-4775-8155-a73cd104c2b8",
-      "name": "Compose Reply",
-      "credentials": {
-        "openAiApi": {
-          "id": "fBTScw6f4Kra5Opb",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "mode": "list",
-          "value": "gpt-4.1-mini"
-        },
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
-      "position": [
-        3072,
-        352
-      ],
-      "id": "6e0197d6-1304-4646-9dba-83bf9d65eac3",
-      "name": "OpenAI Chat Model6",
-      "credentials": {
-        "openAiApi": {
-          "id": "fBTScw6f4Kra5Opb",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "append",
-        "documentId": {
-          "__rl": true,
-          "value": "1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE",
-          "mode": "list",
-          "cachedResultName": "Gunnar Telegram - Tööpäevikud",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE/edit?usp=drivesdk"
-        },
-        "sheetName": {
-          "__rl": true,
-          "value": "gid=0",
-          "mode": "list",
-          "cachedResultName": "Sheet1",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE/edit#gid=0"
-        },
-        "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "Sisu": "={{ $json.text.startsWith('=') ? ' ' + $json.text : $json.text }}",
-            "Tiimiliige": "={{ $('Telegram Trigger').item.json.message.from.first_name }} {{ $('Telegram Trigger').item.json.message.from.last_name }}",
-            "Aeg": "={{ $now.format('dd.MM.yyyy HH:mm') }}"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
           },
-          "matchingColumns": [],
-          "schema": [
+          "conditions": [
             {
-              "id": "ID",
-              "displayName": "ID",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": true
+              "id": "c7e6d579-41c4-44e9-a489-aeae67309b28",
+              "leftValue": "={{$json.statusCode}}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
             },
             {
-              "id": "Aeg",
-              "displayName": "Aeg",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "Tiimiliige",
-              "displayName": "Tiimiliige",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "Sisu",
-              "displayName": "Sisu",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
+              "id": "257f5ff6-437f-47ec-a054-942aed6e0270",
+              "leftValue": "={{$json.statusCode}}",
+              "rightValue": 300,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
             }
           ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": false
+          "combinator": "and"
         },
         "options": {}
       },
-      "type": "n8n-nodes-base.googleSheetsTool",
-      "typeVersion": 4.6,
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
       "position": [
-        1904,
-        912
+        480,
+        -464
       ],
-      "id": "e193b95c-560f-40c6-94ba-678c18dd8f7e",
-      "name": "Append row in sheet in Google Sheets",
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "QhkH0qasXfAL0EsP",
-          "name": "Google Sheets account"
-        }
-      }
+      "id": "0a8eb913-c710-4bf5-9231-288fadba6e2b",
+      "name": "Whisper Retry Check"
     },
     {
       "parameters": {
-        "model": "text-embedding-3-small",
-        "options": {}
+        "amount": 8
       },
-      "id": "37824827-7042-4b00-be51-ce83b8328ee4",
-      "name": "Embeddings OpenAI",
-      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
       "position": [
-        3776,
-        1120
+        656,
+        -320
       ],
-      "credentials": {
-        "openAiApi": {
-          "id": "fBTScw6f4Kra5Opb",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "mode": "retrieve-as-tool",
-        "toolName": "workHistoryKTAs",
-        "toolDescription": "Returns the most relevant installation or technical excerpts about Ekopanel strawboard products from the Supabase vector store to help answer customer questions.",
-        "tableName": {
-          "__rl": true,
-          "value": "rag_documents_diary_agent",
-          "mode": "list",
-          "cachedResultName": "rag_documents_diary_agent"
-        },
-        "topK": 5,
-        "options": {
-          "queryName": "match_documents"
-        }
-      },
-      "id": "28a8f6d7-030c-4bf0-9c4c-e1b6b4d5e866",
-      "name": "Supabase Vector Store",
-      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
-      "typeVersion": 1,
-      "position": [
-        3760,
-        912
-      ],
-      "credentials": {
-        "supabaseApi": {
-          "id": "auGOK59p7RmaXXjU",
-          "name": "Supabase account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "url": "https://gist.githubusercontent.com/GunnarHeinamaa/4c6a9e90eea76b829b6881388a4430b5/raw",
-        "options": {
-          "response": {
-            "response": {}
-          }
-        }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        80,
-        -176
-      ],
-      "id": "33674901-489b-4118-8175-e502cf52b1a0",
-      "name": "Get Vocabulary"
+      "id": "3077b1dc-7567-4d22-9371-3778a3e3491e",
+      "name": "Wait",
+      "webhookId": "f95bd13d-8d33-44d1-a614-69ced87826ec"
     },
     {
       "parameters": {
         "assignments": {
           "assignments": [
             {
-              "id": "f861bb6c-9073-4448-8fb3-74d62d507e1f",
-              "name": "prompt",
-              "value": "={{ \n\"The following recording contains Estonian construction terms: \" +\n$node[\"Get Vocabulary\"].json.data\n  .split('\\n')\n  .filter(w => w.length > 3)              // drop very short tokens\n  .filter((w,i,a) => a.indexOf(w) === i)  // unique\n  .slice(0, 40)                           // keep first 40 words\n  .join(', ')\n}}\n",
+              "id": "64c21704-2252-4c4f-8153-49eaa0aede35",
+              "name": "text",
+              "value": "={{$json.body?.text ?? $json.text}}",
               "type": "string"
             }
           ]
@@ -852,11 +1718,11 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        432,
-        -176
+        1232,
+        -480
       ],
-      "id": "d40c97c8-5abf-414f-a0f7-24a56229ac4b",
-      "name": "Build Prompt"
+      "id": "8f197aa8-2b51-41ef-986f-6ff958e0cd3f",
+      "name": "Set Text"
     },
     {
       "parameters": {
@@ -878,7 +1744,7 @@
             },
             {
               "name": "prompt",
-              "value": "=\"The following recording contains Estonian construction terms: \" {{ $('Build Prompt').item.json.prompt }}"
+              "value": "=\"The following recording contains Estonian construction terms: \" + $node[\"Ingest Vocab\"].json.prompt"
             },
             {
               "parameterType": "formBinaryData",
@@ -887,125 +1753,737 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1472,
-        -272
+        816,
+        -320
       ],
-      "id": "3db35fce-e45e-4b36-8165-c7763340b4f9",
-      "name": "Whisper",
+      "id": "850889a5-d94b-4e9d-ab4b-622be5d0f572",
+      "name": "Whisper1",
       "credentials": {
         "openAiApi": {
           "id": "fBTScw6f4Kra5Opb",
           "name": "OpenAi account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "model": "text-embedding-3-small",
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c7e6d579-41c4-44e9-a489-aeae67309b28",
+              "leftValue": "={{$json.statusCode}}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "257f5ff6-437f-47ec-a054-942aed6e0270",
+              "leftValue": "={{$json.statusCode}}",
+              "rightValue": 300,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
         "options": {}
       },
-      "id": "5c8d9453-4565-4609-844f-04309c43d020",
-      "name": "Embeddings OpenAI2",
-      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
       "position": [
-        1376,
-        1216
+        992,
+        -320
       ],
-      "credentials": {
-        "openAiApi": {
-          "id": "fBTScw6f4Kra5Opb",
-          "name": "OpenAi account"
-        }
-      }
+      "id": "ec3a2899-e69e-4851-9471-8da613a8de8d",
+      "name": "Whisper Retry Check1"
     },
     {
       "parameters": {
-        "mode": "retrieve-as-tool",
-        "toolName": "documents",
-        "toolDescription": "Returns the most relevant installation or technical excerpts about Ekopanel strawboard products from the Supabase vector store to help answer customer questions.",
-        "tableName": {
-          "__rl": true,
-          "value": "rag_documents_diary_agent",
-          "mode": "list",
-          "cachedResultName": "rag_documents_diary_agent"
+        "errorMessage": "Whisper failed."
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        -304
+      ],
+      "id": "f7ea8848-652a-4818-b5ac-25d5ba8663e9",
+      "name": "Stop and Error"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        112,
+        -464
+      ],
+      "id": "557195ee-1de8-4f18-b175-cd0c96e73c7f",
+      "name": "Pre-AI Throttle",
+      "webhookId": "bf02fccb-2bf3-4307-946e-6b27883881ad"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3216,
+        -272
+      ],
+      "id": "a223e7e0-93ed-4c79-9f42-7e1c9d0e97f5",
+      "name": "Pre-AI Throttle1",
+      "webhookId": "bf02fccb-2bf3-4307-946e-6b27883881ad",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8d948a60-cc2a-433f-bbaa-3a5e32faaf0b",
+              "leftValue": "={{ $json.is_callback === true || (($json.chatInput || $json.text || '').trim().length > 0) || $json.has_file === true || $json.kta_trigger === true }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
         },
-        "options": {
-          "queryName": "match_documents"
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2736,
+        -272
+      ],
+      "id": "64120d3d-1c23-4285-a08d-f2e769e47cde",
+      "name": "Empty Input Guard"
+    },
+    {
+      "parameters": {
+        "chatId": "={{$node[\"Telegram Trigger\"].json.message.chat.id}}",
+        "text": "=Ma ei saanud sisust aru. Saada palun tekst või häälsõnum.",
+        "additionalFields": {
+          "appendAttribution": false
         }
       },
-      "id": "b79e4cb9-96a5-429e-8358-7f59167bc83b",
-      "name": "Supabase Vector Store1",
-      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
       "position": [
-        1568,
-        1136
+        2912,
+        -208
       ],
+      "id": "e893e46e-1342-4f29-a995-00e51e43311d",
+      "name": "Ei Saanud Aru",
+      "webhookId": "4219a6e2-f275-43a6-8854-edebc84ffce1",
       "credentials": {
-        "supabaseApi": {
-          "id": "auGOK59p7RmaXXjU",
-          "name": "Supabase account"
+        "telegramApi": {
+          "id": "ysvpOgV3wwAx3KvP",
+          "name": "Telegram account"
         }
       }
     },
     {
       "parameters": {
-        "content": "## CALENDAR AGENT \n",
-        "height": 864,
-        "width": 912,
-        "color": 4
+        "jsCode": "// Sanitize Input — keep all routing fields AND forward file ids\nconst s = $json;\n\n// detect callbacks reliably\nconst isCb =\n  s.inputSource === 'callback' ||\n  s.is_callback === true ||\n  !!s.callback_query_id;\n\n// best-effort file id extraction (handle photo/doc and fallbacks)\nlet file_id = s.file_id ?? null;\nlet file_unique_id = s.file_unique_id ?? null;\n\n// fallback if upstream provided photo size arrays instead of a single id\nif (!file_id) {\n  const sizes = s.photo_sizes || s.photo || s.photos || [];\n  if (Array.isArray(sizes) && sizes.length) {\n    const last = sizes[sizes.length - 1];\n    file_id = last?.file_id ?? null;\n    file_unique_id = last?.file_unique_id ?? null;\n  }\n}\n\n// document fallbacks (if your upstream uses different keys)\nconst document_id =\n  s.document_id ?? s.doc_file_id ?? s.document_file_id ?? null;\nconst document_unique_id =\n  s.document_unique_id ?? s.doc_file_unique_id ?? s.document_file_unique_id ?? null;\n\nreturn [{\n  // routing\n  inputSource: isCb ? 'callback' : 'text',\n  is_callback: isCb,\n\n  // message basics\n  text: (s.text ?? '').toString(),\n  chat_id: s.chat_id ?? null,\n  tg_message_id: s.tg_message_id ?? s.message_id ?? null,\n  tg_media_group_id: s.tg_media_group_id ?? null,\n\n  // file flags + counts\n  has_photo: !!s.has_photo,\n  has_document: !!s.has_document,\n  has_file: !!s.has_file,\n  file_count: Number.isFinite(s.file_count) ? s.file_count : 0,\n\n  // 🔴 the important bits we were missing\n  file_id,\n  file_unique_id,\n  document_id,\n  document_unique_id,\n\n  // callback-only fields\n  callback_query_id: s.callback_query_id ?? null,\n  chat_instance: s.chat_instance ?? null,\n  data: s.data ?? null,\n\n  // passthrough (useful later)\n  reply_markup: s.reply_markup ?? undefined,\n  author: s.author ?? null,\n}];"
       },
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        2224,
-        496
+        2320,
+        -224
       ],
-      "id": "a74b1fd9-d235-4168-a5d9-5f58ab62341f",
-      "name": "Sticky Note"
+      "id": "9332a311-c83e-4ccf-8479-00aa6ad8936d",
+      "name": "Sanitize Input"
     },
     {
       "parameters": {
-        "content": "## DIARY AGENT \n",
-        "height": 864,
-        "width": 912,
-        "color": 4
+        "jsCode": "const dict = {\n  rubezi: 'Rubexi',\n  kummikomat: 'kummimatt',\n  põhublatd: 'põhuplaadi',\n  'kübar kargass': 'kübar-karkass',   // plain hyphen\n};\nlet txt = String($json.text || '').toLowerCase();\nfor (const [wrong, right] of Object.entries(dict)) {\n  const re = new RegExp(`\\\\b${wrong}\\\\b`, 'gi');\n  txt = txt.replace(re, right);\n}\nreturn { ...$json, text: txt };"
       },
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        1296,
-        496
+        1488,
+        -480
       ],
-      "id": "8fc9af72-db8e-44cf-b40d-bede2ab41d11",
-      "name": "Sticky Note2"
+      "id": "f9d81e5f-46ae-45d9-853d-8c98a8ba2aa0",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "amount": 0.2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        6608,
+        -256
+      ],
+      "id": "051349de-2308-43e3-8f89-9da7e9fbb740",
+      "name": "Wait1",
+      "webhookId": "a57ab355-e208-42dc-b197-cade66493036"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build HTML safely, split into Telegram-safe chunks, and pass reply_markup on the first chunk.\nconst isStr = v => typeof v === 'string' && v.length > 0;\n\nconst escapeHtml = s => s\n  .replace(/&/g,'&amp;')\n  .replace(/</g,'&lt;')\n  .replace(/>/g,'&gt;');\n\nconst mdLiteToHtml = s => s\n  .replace(/\\*\\*(.+?)\\*\\*/g,'<b>$1</b>')\n  .replace(/`([^`]+?)`/g,'<code>$1</code>');\n\nconst raw = isStr($json.output) ? $json.output : '';\nconst cleaned = raw.replace(/\\u200B/g,'').replace(/[^\\S\\r\\n]+\\n/g,'\\n').replace(/\\n{3,}/g,'\\n\\n').trim();\nconst html = mdLiteToHtml(escapeHtml(cleaned));\n\nconst replyMarkup = $json.reply_markup; // keep object\n\nconst MAX = 3500;           // stay well below Telegram’s 4096\nconst out = [];\nfor (let i = 0; i < html.length;) {\n  let end = Math.min(i + MAX, html.length);\n  const soft = html.lastIndexOf('\\n\\n', end);\n  if (soft > i + 100) end = soft;\n\n  out.push({\n    json: {\n      send_text: html.slice(i, end),\n      parse_mode: 'HTML',\n      placeholder_id: $json.placeholder_id,\n      placeholder_chat_id: $json.placeholder_chat_id,\n      // attach keyboard only to the first chunk\n      reply_markup: i === 0 ? replyMarkup : undefined,\n      is_first: i === 0,\n    }\n  });\n\n  i = end;\n}\n\n// Fallback (rare)\nreturn out.length ? out : [{\n  json: {\n    send_text: 'Tekkis viga: vastust ei leitud.',\n    parse_mode: 'HTML',\n    placeholder_id: $json.placeholder_id,\n    placeholder_chat_id: $json.placeholder_chat_id,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5104,
+        -336
+      ],
+      "id": "75ddd953-d840-4868-9243-10bf595cdb95",
+      "name": "Format and Chunk Reply"
     },
     {
       "parameters": {
         "assignments": {
           "assignments": [
             {
-              "id": "unified-text",
-              "name": "chatInput",
-              "value": "=={{ $json.message?.content || $json.chatInput || $json.text }}",
+              "id": "2a8fbc73-2730-4867-a71c-7ca573889e70",
+              "name": "placeholder_id",
+              "value": "={{$json.result?.message_id || $json.message_id}}",
               "type": "string"
             },
             {
-              "id": "unified-chatInput",
-              "name": "text",
-              "value": "={{ $json.message?.content || $json.chatInput || $json.text }}",
+              "id": "d0d8da0b-b1e5-43eb-8f79-7fd3fe814cf5",
+              "name": "placeholder_chat_id",
+              "value": "={{$node[\"Telegram Trigger\"].json.message.chat.id}}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4368,
+        -112
+      ],
+      "id": "53679a66-87fe-4fa7-8ae2-886c0fcd0257",
+      "name": "Placeholder meta"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        4576,
+        -336
+      ],
+      "id": "6cea6471-753d-435d-bcd8-1dde2d192850",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b03bc17a-463e-4500-a09c-b666c3cc5651",
+              "leftValue": "={{$itemIndex}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5408,
+        -336
+      ],
+      "id": "727d5780-424a-4513-963c-259886df7813",
+      "name": "First Chunk?"
+    },
+    {
+      "parameters": {
+        "chatId": "={{$node[\"Telegram Trigger\"].json.message.chat.id}}",
+        "text": "={{$json.send_text}}",
+        "replyMarkup": "={{ \n  $json.reply_markup\n    ? JSON.stringify($json.reply_markup)\n    : ($json.payload?.reply_markup\n        ? JSON.stringify($json.payload.reply_markup)\n        : undefined)\n}}",
+        "forceReply": {},
+        "replyKeyboardOptions": {},
+        "replyKeyboardRemove": {},
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML",
+          "reply_to_message_id": "={{$json.placeholder_id}}"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        6240,
+        -224
+      ],
+      "id": "2131c5b1-7585-47d5-8ec7-5ee66fa553de",
+      "name": "Send Chunk",
+      "webhookId": "4219a6e2-f275-43a6-8854-edebc84ffce1",
+      "credentials": {
+        "telegramApi": {
+          "id": "ysvpOgV3wwAx3KvP",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = $now.toMillis();\nconst start = Number($json.perf_start_ms) || now;\n\n// Helpers\nconst safeParse = v => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };\n\nconst pool = [];\nconst push = o => { if (o && typeof o === 'object') pool.push(o); };\n\npush($json);\npush(safeParse($json.output));\npush($json.data);\npush($json.message);\npush($json.response);\npush($json.orchestrator);\npush($json.agent);\n\nlet model;\nconst usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };\n\nconst visit = (o) => {\n  if (!o || typeof o !== 'object') return;\n\n  if (!model && typeof o.model === 'string' && o.model) model = o.model;\n\n  if (o.usage && (o.usage.prompt_tokens != null || o.usage.completion_tokens != null || o.usage.total_tokens != null)) {\n    const u = o.usage;\n    usage.prompt_tokens     += Number(u.prompt_tokens || 0);\n    usage.completion_tokens += Number(u.completion_tokens || 0);\n    usage.total_tokens      += Number(u.total_tokens ?? ((u.prompt_tokens || 0) + (u.completion_tokens || 0)));\n  }\n  for (const v of Object.values(o)) visit(v);\n};\nfor (const o of pool) visit(o);\n\nreturn [{\n  json: {\n    ...$json,\n    ts: $now.toISO(),\n    model: model || $json.model || 'unknown',\n    perf_end_ms: now,\n    perf_ms: Math.max(0, now - start),\n\n    // tokens now live on THIS item\n    prompt_tokens: usage.prompt_tokens,\n    completion_tokens: usage.completion_tokens,\n    total_tokens: usage.total_tokens,\n\n    ok: $json.ok !== false,\n    error: $json.error || ''\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4928,
+        -128
+      ],
+      "id": "6de41c66-d0c5-4f33-b32b-28a47e8aef96",
+      "name": "Extract Usage and Duration",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "tableId": "observability",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "ts",
+              "fieldValue": "={{ $json.ts }}"
+            },
+            {
+              "fieldId": "model",
+              "fieldValue": "={{ $json.model || 'unknown' }}"
+            },
+            {
+              "fieldId": "duration_ms",
+              "fieldValue": "={{ Math.round(Number($json.perf_ms) || 0) }}"
+            },
+            {
+              "fieldId": "tokens_prompt",
+              "fieldValue": "={{ Number($json.prompt_tokens) || 0 }}"
+            },
+            {
+              "fieldId": "tokens_completion",
+              "fieldValue": "={{ Number($json.completion_tokens) || 0 }}"
+            },
+            {
+              "fieldId": "tokens_total",
+              "fieldValue": "={{ Number($json.total_tokens) || 0 }}"
+            },
+            {
+              "fieldId": "ok",
+              "fieldValue": "={{ !!$json.ok }}"
+            },
+            {
+              "fieldId": "error",
+              "fieldValue": "={{ $json.error || '' }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        5600,
+        -128
+      ],
+      "id": "a05fca1d-fe6e-4cff-b23a-0f5f4211b9ff",
+      "name": "Observability Logging",
+      "credentials": {
+        "supabaseApi": {
+          "id": "auGOK59p7RmaXXjU",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4f260265-e50b-4ecd-a969-f7d9a68beb7e",
+              "name": "perf_end_ms",
+              "value": "={{ Number($json.perf_end_ms ?? $now.toMillis()) }}",
+              "type": "number"
+            },
+            {
+              "id": "83bf896f-69b2-44e0-a895-59f8dd3be570",
+              "name": "perf_ms",
+              "value": "={{ Number($json.perf_ms ?? 0) }}",
+              "type": "number"
+            },
+            {
+              "id": "a91619e6-33ec-474e-8dcb-2e9dd185868e",
+              "name": "duration_ms",
+              "value": "={{ Math.max(0, Number($json.perf_ms ?? 0) || (Number($json.perf_end_ms || 0) - Number($json.perf_start_ms || 0))) }}",
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5088,
+        -128
+      ],
+      "id": "37ad4966-c657-469b-90a3-d5dd33c5460f",
+      "name": "Log Duration"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "96f6184a-7dd8-421a-94e9-952c86935528",
+              "leftValue": "={{ ($json.send_text || '').trim().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5968,
+        -208
+      ],
+      "id": "8abd2e2f-8414-4a0b-8679-c43a3673a6b9",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "chatId": "={{$node[\"Telegram Trigger\"].json.message.chat.id}}",
+        "text": "=⏳ Töötlen…",
+        "additionalFields": {
+          "appendAttribution": false,
+          "reply_to_message_id": "={{$node[\"Telegram Trigger\"].json.message.message_id}}"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1312,
+        -112
+      ],
+      "id": "ea7bb7e4-f093-441c-9fa5-226e5cd77726",
+      "name": "Placeholder",
+      "webhookId": "4219a6e2-f275-43a6-8854-edebc84ffce1",
+      "credentials": {
+        "telegramApi": {
+          "id": "ysvpOgV3wwAx3KvP",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "description": "Log a construction diary entry. Input: free-text in Estonian describing work done (who/what/where/how much). Writes to DB + Sheet and returns a short confirmation. Use when the user tells what was done or asks to ‘log/record/mark’ work.",
+        "workflowId": {
+          "__rl": true,
+          "value": "hycEgK8it3KuQJdy",
+          "mode": "list",
+          "cachedResultName": "Gunnar Heinamaa - AI Employee — Gunnar - Diary Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "text": "={{ $json.payload?.text || $json.text || $json.chatInput }}",
+            "chat_id": "={{ $json.chat_id }}",
+            "update_id": "={{ $json.update_id }}",
+            "author": "={{ $json.author }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "author",
+              "displayName": "author",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "update_id",
+              "displayName": "update_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        3568,
+        144
+      ],
+      "id": "b9bddbfc-aa96-46ff-93da-16e50891acb4",
+      "name": "Diary Agent Tool"
+    },
+    {
+      "parameters": {
+        "description": "Answer questions about the single shared company calendar (there is only one – don’t ask which). Understand queries like ‘kas meil täna on midagi?’, ‘mis homme kell 9?’. Return a short summary. Or create an event, as per the user request.",
+        "workflowId": {
+          "__rl": true,
+          "value": "9O9MQwyRwW8Wwft7",
+          "mode": "list",
+          "cachedResultName": "Gunnar Heinamaa - AI Employee — Gunnar - Calendar Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "text": "={{ $json.payload?.text || $json.text || $json.chatInput }}"
+          },
+          "matchingColumns": [
+            "text"
+          ],
+          "schema": [
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        3120,
+        144
+      ],
+      "id": "653cb947-c4ba-4c5d-a2dd-71c205dcf0a5",
+      "name": "Calendar Agent Tool"
+    },
+    {
+      "parameters": {
+        "description": "Search past work/notes and summarize. Use when the user asks what was done previously, on project X, last week, etc.",
+        "workflowId": {
+          "__rl": true,
+          "value": "U2MrvcoCXKj71Zuq",
+          "mode": "list",
+          "cachedResultName": "Gunnar Heinamaa - AI Employee — Gunnar - Knowledge Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query": "={{$json.chatInput || $json.text}}"
+          },
+          "matchingColumns": [
+            "chatInput"
+          ],
+          "schema": [
+            {
+              "id": "query",
+              "displayName": "query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        4000,
+        144
+      ],
+      "id": "ab2b16a1-ed13-4176-afb2-fb5285c9f208",
+      "name": "Knowledge Agent Tool"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "78b36df0-0016-413f-803b-242782232c5c",
+              "name": "ts",
+              "value": "={{$json.ts}}",
               "type": "string"
             },
             {
-              "id": "input-source",
-              "name": "inputSource",
-              "value": "={{ $json.message?.content ? 'voice' : 'text' }}",
+              "id": "6c9c708f-d966-4eae-a106-fa4883475262",
+              "name": "model",
+              "value": "={{$json.model || 'unknown'}}",
+              "type": "string"
+            },
+            {
+              "id": "d55d31ce-4b7d-49b9-9b8e-b5ab4e4ed6ea",
+              "name": "duration_ms",
+              "value": "={{ Number($json.perf_ms ?? 0) }}",
+              "type": "string"
+            },
+            {
+              "id": "07e2ceb9-132a-4ecc-bcb6-bf0435842e09",
+              "name": "tokens_prompt",
+              "value": "={{ Number($json.prompt_tokens ?? 0) }}",
+              "type": "string"
+            },
+            {
+              "id": "0e7c3b61-3542-4134-9f18-093728d3a8b8",
+              "name": "tokens_completion",
+              "value": "={{ Number($json.completion_tokens ?? 0) }}",
+              "type": "string"
+            },
+            {
+              "id": "55e94877-c197-43a7-8bd3-f7eec807adc0",
+              "name": "tokens_total",
+              "value": "={{ Number($json.total_tokens ?? (($json.prompt_tokens||0)+($json.completion_tokens||0))) }}",
+              "type": "string"
+            },
+            {
+              "id": "ca660821-900a-4e2f-84b1-b8cb8e45de96",
+              "name": "ok",
+              "value": "={{ $json.ok !== false }}",
+              "type": "string"
+            },
+            {
+              "id": "e6dcaf26-10f7-4d88-ab0a-d6b6aa1baafc",
+              "name": "error",
+              "value": "={{ String($json.error || '') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5344,
+        -128
+      ],
+      "id": "bd96137c-c378-4b5a-aeba-4b83ee650293",
+      "name": "Metrics to DB"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e091961f-7061-4f17-a770-1f763a63266a",
+              "name": "perf_start_ms",
+              "value": "={{$now.toMillis()}}",
+              "type": "string"
+            },
+            {
+              "id": "7c1a30a2-c50d-4d1d-84ba-28f6df520e36",
+              "name": "request_id",
+              "value": "={{$json.update_id || $json.request_id || $now.toMillis()}}",
               "type": "string"
             }
           ]
@@ -1015,47 +2493,254 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        2416,
-        -80
+        -1328,
+        -352
       ],
-      "id": "d69fe3b3-2169-4fb9-b019-c468a699ae84",
-      "name": "Normalize Input"
+      "id": "00070559-3230-468e-ae80-6fb19073d81e",
+      "name": "Perf Start"
     },
     {
       "parameters": {
-        "toolDescription": "A knowledge retrieval assistant for construction work reports.",
-        "text": "={{ $('Normalize Input').item.json.chatInput }}",
-        "options": {
-          "systemMessage": "You are a knowledge retrieval assistant for construction work reports.\n\nWhen searching for information:\n1. Focus on WORK ACTIVITIES and PROGRESS REPORTS\n2. If you only find product specifications, say \"Ei leidnud tööaruandeid, ainult tehnilisi andmeid\"\n3. Look for dates, locations, and actual work done\n4. Avoid giving product installation requirements unless specifically asked\n\nIf the retrieved information doesn't answer the user's question about work activities, be honest about it.\n\nWhen using the google sheet tool, make sure to pass on a time format that works with the format we use on our sheet: 06.08.2025 15:10\nSo when the user asks about the past week or yesterday, the query needs to pass with the proper format."
+        "jsCode": "// Normalize orchestrator output and hoist reply_markup forward.\nconst tryParse = v => {\n  if (v == null) return undefined;\n  if (typeof v === 'object') return v;\n  try { return JSON.parse(String(v)); } catch { return undefined; }\n};\n\nconst out = tryParse($json.output) || {};\nconst text = typeof out.text === 'string'\n  ? out.text\n  : (typeof $json.output === 'string' ? $json.output : '');\n\nconst reply = out.reply_markup ?? $json.reply_markup; // keep as OBJECT\n\nreturn [{\n  json: {\n    ...$json,\n    output: text,             // legacy field other nodes read\n    final_response: text,     // optional, if something else uses it\n    reply_markup: reply,      // <-- OBJECT, do not stringify here\n    ts: new Date().toISOString(),\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3920,
+        -352
+      ],
+      "id": "016f089d-4447-43d8-ae29-20b42470c252",
+      "name": "Finish Timer"
+    },
+    {
+      "parameters": {
+        "description": "Saves Telegram photos or PDFs for a Kaetud Töö Akt (KTA): downloads the file(s), uploads to Google Drive KTA/INBOX, records an attachment row in the database, and appends any caption/text to the current kta_session. \nUse this tool when the message has attachments (has_photo / has_document) or when the user says they’re sending KTA photos, e.g., “KTA pildid”, “kaetud töö akti pildid”, “siin on akti fotod”.\nInput: pass the full Telegram update so the tool can read file IDs and caption.\nOutput: returns database ids and Drive ids; no long text needed.",
+        "workflowId": {
+          "__rl": true,
+          "value": "4MUsqdBF1bGoxJng",
+          "mode": "list",
+          "cachedResultName": "Gunnar Heinamaa - AI Employee — KTA Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "chat_id": "={{ $json.chat_id\n   || $json.message?.chat?.id\n   || $json.callback_query?.message?.chat?.id }}",
+            "file_count": "={{ $json.file_count }}",
+            "message": "={{ $json.message }}",
+            "callback_query": "={{ $json.callback_query }}",
+            "text": "={{ $json.text }}",
+            "has_photo": "={{ $json.has_photo }}",
+            "has_document": "={{ $json.has_document }}",
+            "has_file": "={{$json.has_file}}",
+            "file_id": "={{$json.file_id}}",
+            "tg_message_id": "={{$json.tg_message_id}}",
+            "tg_media_group_id": "={{$json.tg_media_group_id}}",
+            "file_unique_id": "={{$json.file_unique_id}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "callback_query",
+              "displayName": "callback_query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "has_photo",
+              "displayName": "has_photo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            },
+            {
+              "id": "has_document",
+              "displayName": "has_document",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            },
+            {
+              "id": "file_count",
+              "displayName": "file_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "has_file",
+              "displayName": "has_file",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            },
+            {
+              "id": "file_id",
+              "displayName": "file_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "tg_message_id",
+              "displayName": "tg_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "tg_media_group_id",
+              "displayName": "tg_media_group_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "file_unique_id",
+              "displayName": "file_unique_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         }
       },
-      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.2,
       "position": [
-        3472,
-        704
+        4000,
+        576
       ],
-      "id": "82640c66-ebc6-404e-9aa0-c41a77c0e998",
-      "name": "Knowledge Agent"
+      "id": "acc6852d-341b-41c3-96ce-95ee7ac04e15",
+      "name": "KTA Agent Tool"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "18c89d86-a91a-4c25-a6bc-cfc7c4082692",
+              "leftValue": "={{ $json.is_callback === true || $json.inputSource === 'callback' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": "",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2528,
+        -496
+      ],
+      "id": "2b4bb7ed-78b6-452d-920b-a07ca99abab7",
+      "name": "Callback?"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"text\": { \"type\": \"string\" },\n    \"reply_markup\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"inline_keyboard\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"text\": { \"type\": \"string\" },\n                \"callback_data\": { \"type\": \"string\" }\n              },\n              \"required\": [\"text\", \"callback_data\"],\n              \"additionalProperties\": false\n            }\n          }\n        }\n      },\n      \"required\": [\"inline_keyboard\"],\n      \"additionalProperties\": false\n    }\n  },\n  \"required\": [\"text\"],\n  \"additionalProperties\": false\n}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        4272,
+        80
+      ],
+      "id": "62fe976f-aba6-4117-8ab9-7c5c1a58d985",
+      "name": "Structured Output Parser"
     },
     {
       "parameters": {
         "model": {
           "__rl": true,
-          "value": "gpt-4o",
+          "value": "chatgpt-4o-latest",
           "mode": "list",
-          "cachedResultName": "gpt-4o"
+          "cachedResultName": "chatgpt-4o-latest"
         },
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
       "position": [
-        3344,
-        912
+        2592,
+        32
       ],
-      "id": "ea45c9bc-fbd2-4b7b-b7d1-6dd62332263e",
-      "name": "OpenAI Chat Model7",
+      "id": "34b98b62-7bdb-4fce-b54d-fcaba4377e57",
+      "name": "OpenAI Chat Model",
       "credentials": {
         "openAiApi": {
           "id": "fBTScw6f4Kra5Opb",
@@ -1065,59 +2750,533 @@
     },
     {
       "parameters": {
-        "documentId": {
+        "model": {
           "__rl": true,
-          "value": "1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE",
           "mode": "list",
-          "cachedResultName": "Gunnar Telegram - Tööpäevikud",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE/edit?usp=drivesdk"
+          "value": "gpt-4.1-mini"
         },
-        "sheetName": {
-          "__rl": true,
-          "value": "gid=0",
-          "mode": "list",
-          "cachedResultName": "Sheet1",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AHXtalClbHpy-BrllEWyI8Q7Rr-3rFl39ItE0DSTQHE/edit#gid=0"
-        },
-        "options": {
-          "dataLocationOnSheet": {
-            "values": {
-              "rangeDefinition": "specifyRangeA1",
-              "range": "B:D"
-            }
-          }
-        }
+        "options": {}
       },
-      "type": "n8n-nodes-base.googleSheetsTool",
-      "typeVersion": 4.6,
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
       "position": [
-        3632,
-        912
+        4432,
+        272
       ],
-      "id": "4fc81dfb-9972-4242-b4e9-b827535cd9ce",
-      "name": "Get row(s) in sheet in Google Sheets",
+      "id": "0b7b7e4d-a86c-4728-9d85-ae091b1b5866",
+      "name": "OpenAI Chat Model1",
       "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "QhkH0qasXfAL0EsP",
-          "name": "Google Sheets account"
+        "openAiApi": {
+          "id": "fBTScw6f4Kra5Opb",
+          "name": "OpenAi account"
         }
       }
     },
     {
       "parameters": {
-        "content": "## KNOWLEDGE AGENT \n",
-        "height": 864,
-        "width": 912,
-        "color": 4
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot8260813299:AAEuacpNRoQU9GaowgZX6_2EYtUbMBEKCOo/editMessageText",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $json.placeholder_chat_id }}"
+            },
+            {
+              "name": "message_id",
+              "value": "={{ $json.placeholder_id }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.send_text }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            },
+            {
+              "name": "reply_markup",
+              "value": "={{ JSON.stringify($json.reply_markup) }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5840,
+        -480
+      ],
+      "id": "a00cd57a-e36a-48f7-a836-248c91766637",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Normalize Telegram update (message or callback_query) into a flat envelope.\n * Works with text, photos, documents, and callbacks.\n */\nconst t = $json;\n\n// prefer callback_query if present, otherwise current/new message-ish fields\nconst cb  = t.callback_query || null;\nconst msg =\n  t.message ||\n  (cb && cb.message) ||\n  t.edited_message ||\n  t.channel_post ||\n  t.edited_channel_post ||\n  null;\n\n// routing flags\nconst isCallback = !!cb;\nconst inputSource = isCallback ? 'callback' : 'text';\n\n// message basics\nconst chatId         = msg?.chat?.id ?? null;\nconst tgMessageId    = msg?.message_id ?? null;\nconst mediaGroupId   = msg?.media_group_id ?? null;\nconst text           = (msg?.text ?? msg?.caption ?? '').toString();\n\n// files\nconst hasPhoto       = Array.isArray(msg?.photo) && msg.photo.length > 0;\nconst hasDocument    = !!msg?.document;\nconst fileCount      = (Array.isArray(msg?.photo) ? msg.photo.length : 0) + (hasDocument ? 1 : 0);\nconst hasFile        = hasPhoto || hasDocument;\n\n// callback-specific\nconst callbackQueryId = cb?.id ?? null;\nconst chatInstance    = cb?.chat_instance ?? null;\nconst data            = cb?.data ?? null;\n\n// pass-through UI keyboard if present (useful for editMessageText)\nconst replyMarkup     = msg?.reply_markup ?? undefined;\n\n// author convenience\nconst author =\n  (cb?.from?.first_name ?? msg?.from?.first_name ?? null);\n\n// build normalized envelope\nreturn [{\n  // routing\n  inputSource,                // 'callback' | 'text'\n  is_callback: isCallback,    // boolean\n\n  // message\n  text,\n  chat_id: chatId,\n  tg_message_id: tgMessageId,\n  tg_media_group_id: mediaGroupId,\n\n  // files\n  has_photo: hasPhoto,\n  has_document: hasDocument,\n  has_file: hasFile,\n  file_count: fileCount,\n\n  // callback-only\n  callback_query_id: callbackQueryId,\n  chat_instance: chatInstance,\n  data,\n\n  // optional UI state\n  reply_markup: replyMarkup,\n\n  // nicety\n  author,\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1664,
+        -352
+      ],
+      "id": "45343ba6-b51f-460f-a03f-871c0293e93e",
+      "name": "Normalize TG Update"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse callback data like \"set_project:inbox\" or \"set_project:Project X\" or \"cancel\"\nconst d = $json.data ?? '';\nlet cmd = null, arg = null, ack_text = '✅ Tehtud';\n\nif (d && typeof d === 'string') {\n  const [c, ...rest] = d.split(':');\n  cmd = (c || '').trim();\n  arg = rest.join(':').trim() || null;   // allow \":\" in project names\n}\n\n// nicer ACK text depending on action\nif (cmd === 'set_project') {\n  if (!arg || arg.toLowerCase() === 'inbox') {\n    ack_text = '✅ Inbox valitud';\n  } else {\n    ack_text = `✅ Projekt valitud: ${arg}`;\n  }\n} else if (cmd === 'cancel') {\n  ack_text = '❌ Tühistatud';\n}\n\nreturn [{\n  ...$json,\n  cmd,\n  arg,\n  ack_text\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2848,
+        -976
+      ],
+      "id": "fd1b77ed-e072-419b-bf75-d35b80f91323",
+      "name": "Parse Callback1"
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "queryId": "={{ $json.callback_query_id }}",
+        "additionalFields": {
+          "show_alert": false,
+          "text": "={{ $node[\"Parse Callback1\"].json.ack_text }}"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3056,
+        -976
+      ],
+      "id": "611be802-ca50-4b94-9d23-027c9ce4fb73",
+      "name": "Answer Query a callback1",
+      "webhookId": "4e728e53-9dbe-4afb-b554-6187b0d5aa1f",
+      "credentials": {
+        "telegramApi": {
+          "id": "ysvpOgV3wwAx3KvP",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $item(0).$node[\"Parse Callback1\"].json.cmd }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "set_project",
+              "id": "96b2ccd1-9266-4777-8008-b63f69bb5c95"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3280,
+        -976
+      ],
+      "id": "27d6fabe-0c54-4d99-b3bf-7ebb7de446d0",
+      "name": "Set Project?1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ ($item(0).$node[\"Parse Callback1\"].json.arg || \"\").toLowerCase() }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "inbox",
+              "id": "abf8f14c-12ca-4674-b5d1-c370d9a4a169"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3520,
+        -1120
+      ],
+      "id": "865f2c71-6edd-4342-921c-9f8d33a95a87",
+      "name": "Is Inbox?1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.chat_project_defaults (chat_id, project_id)\nVALUES ($1::bigint, $2::uuid)\nON CONFLICT (chat_id) DO UPDATE\nSET project_id = EXCLUDED.project_id,\n    updated_at = now();",
+        "options": {
+          "queryReplacement": "=$1 → {{ $node[\"Sanitize Input\"].json.chat_id }},$2 →  {{ $node[\"Lookup Project Id\"].json.id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4080,
+        -1040
+      ],
+      "id": "c686cc2b-984a-48ed-b04a-1d2ca1c494e1",
+      "name": "Upsert Default1",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot8260813299:AAEuacpNRoQU9GaowgZX6_2EYtUbMBEKCOo/editMessageText",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $node['Sanitize Input'].json.chat_id }}\",\n  \"message_id\": \"{{ $node['Sanitize Input'].json.tg_message_id }}\",\n  \"text\": \"✅ Valmis. Failid seotakse <b>INBOX</b> kaustaga.\",\n  \"parse_mode\": \"HTML\",\n  \"reply_markup\": { \"inline_keyboard\": [] }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4080,
+        -1328
+      ],
+      "id": "03443e03-0890-4ea7-b043-94f443d198c1",
+      "name": "Edit Message (INBOX)1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot8260813299:AAEuacpNRoQU9GaowgZX6_2EYtUbMBEKCOo/editMessageText",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $node['Sanitize Input'].json.chat_id }}\",\n  \"message_id\": \"{{ $node['Sanitize Input'].json.tg_message_id }}\",\n  \"text\": \"❌ Tühistatud. Projekti ei muudetud.\",\n  \"parse_mode\": \"HTML\",\n  \"reply_markup\": { \"inline_keyboard\": [] }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        -848
+      ],
+      "id": "287654bd-fd6a-48e9-95d1-75287271704a",
+      "name": "Edit Message (CANCEL)1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot8260813299:AAEuacpNRoQU9GaowgZX6_2EYtUbMBEKCOo/editMessageText",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $node['Sanitize Input'].json.chat_id }}\",\n  \"message_id\": \"{{ $node['Sanitize Input'].json.tg_message_id }}\",\n  \"text\": \"✅ Valmis. Lisatud kausta: <b>{{ $node['Lookup Project Id'].json.name }}</b>.\",\n  \"parse_mode\": \"HTML\",\n  \"reply_markup\": { \"inline_keyboard\": [] }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4320,
+        -1040
+      ],
+      "id": "e3f1de61-54b0-4dbc-8f8e-98f29a86a615",
+      "name": "Edit Message (PROJECT)2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM public.chat_project_defaults\nWHERE chat_id = $1::bigint;",
+        "options": {
+          "queryReplacement": "=$1 → {{ [ $node[\"Sanitize Input\"].json.chat_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3776,
+        -1328
+      ],
+      "id": "707535cd-444f-4cee-a3ab-501366fdcdec",
+      "name": "Clear Default2",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, drive_folder_id\nFROM public.projects\nWHERE id = $1::uuid\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "=$1 → {{ $node[\"Parse Callback1\"].json.arg }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3776,
+        -1040
+      ],
+      "id": "7043e51c-756d-4c49-9fa1-4391c2c3c142",
+      "name": "Lookup Project Id",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5846d761-2b14-42c7-a8ea-cd94f9b7dcd1",
+              "leftValue": "={{ ($node[\"Lookup Project Id\"].json.drive_folder_id ?? \"\").toString().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4512,
+        -1040
+      ],
+      "id": "1942f8f4-0bee-48b2-9532-4bdc4b3441a3",
+      "name": "IF Need Folder?"
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $node[\"Lookup Project Id\"].json.name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1NzSQB3NBi4ucVzgi7nZoUqUVRyz85xyi",
+          "mode": "list",
+          "cachedResultName": "Pildid Objektidelt",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1NzSQB3NBi4ucVzgi7nZoUqUVRyz85xyi"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        4848,
+        -1232
+      ],
+      "id": "7919faa3-96af-4a19-94a3-9673945585f9",
+      "name": "Create Project Folder",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "etIcdnam5EQ8HEzz",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.projects\nSET drive_folder_id = $2\nWHERE id = $1::uuid;",
+        "options": {
+          "queryReplacement": "=$1 → {{ $node[\"Lookup Project Id\"].json.id }},$2 →  {{ $node[\"Create Project Folder\"].json.id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5040,
+        -1232
+      ],
+      "id": "2e5e5054-fd08-47b1-addb-36eae61a975d",
+      "name": "Save Folder Id",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const folderId = String($('Resolve Folder ID').first().json.folder_id || '').trim();\nreturn $('Select Files For Message').all()\n  .map(r => ({ json: { fileId: String(r.json.drive_file_id || '').trim(), folderId } }))\n  .filter(i => i.json.fileId);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5920,
+        -1024
+      ],
+      "id": "7169b36f-2c5d-4571-84b8-a5516a67f26b",
+      "name": "Rows to Items"
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.fileId }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.folderId }}",
+          "mode": "id"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        6128,
+        -1024
+      ],
+      "id": "9cd9c441-1fe7-4be0-a366-fa30e46f2f4d",
+      "name": "Move File to Project Folder",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "etIcdnam5EQ8HEzz",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6902ea6f-58ed-4272-af45-afed8e544de9",
+              "name": "folder_id",
+              "value": "={{ $json.folder_id\n   || $node[\"Lookup Project Id\"].json.drive_folder_id\n   || $node[\"Create Project Folder\"].json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "be82e88c-f3b5-43fb-b634-01732843c91e",
+              "name": "mg_param",
+              "value": "={{ $node[\"Sanitize Input\"].json.tg_media_group_id || '__EMPTY__' }}",
+              "type": "string"
+            },
+            {
+              "id": "d574c409-66d0-4e69-b2f4-57cdf64366b9",
+              "name": "mid_param",
+              "value": "={{ $node[\"Sanitize Input\"].json.tg_message_id || '__EMPTY__' }}",
+              "type": "string"
+            },
+            {
+              "id": "ec83b259-8008-4e38-a55e-38f74019a8c8",
+              "name": "chat_param",
+              "value": "={{ $node[\"Sanitize Input\"].json.chat_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5424,
+        -1024
+      ],
+      "id": "3b8b39d8-d789-472c-b0ca-76a405b85928",
+      "name": "Resolve Folder ID"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT drive_file_id\nFROM public.kta_attachments\nWHERE chat_id = $1::bigint\n  AND tg_message_id = $2::bigint\nORDER BY id;",
+        "options": {
+          "queryReplacement": "=$1 → {{$node[\"Normalize Input\"].json.chat_id}}, $2 → {{$node[\"Normalize Input\"].json.tg_message_id}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5664,
+        -1200
+      ],
+      "id": "421a6d7c-b2da-4e57-b774-7aab46ede008",
+      "name": "Select Files for Message",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# KTA IMAGES - CALLBACK\n",
+        "height": 784,
+        "width": 3936,
+        "color": 5
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        3152,
-        496
+        2528,
+        -1408
       ],
-      "id": "10bc04a5-0822-496e-a936-160e6afcc4de",
-      "name": "Sticky Note3"
+      "id": "569f6b3b-4637-4210-8762-40a40cd9af81",
+      "name": "Sticky Note21"
     }
   ],
   "connections": {
@@ -1132,18 +3291,7 @@
         ],
         [
           {
-            "node": "Pass Text Body",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Pass Text Body": {
-      "main": [
-        [
-          {
-            "node": "Normalize Input",
+            "node": "Pass Text Message",
             "type": "main",
             "index": 0
           }
@@ -1154,7 +3302,7 @@
       "main": [
         [
           {
-            "node": "Set Results",
+            "node": "Finish Timer",
             "type": "main",
             "index": 0
           }
@@ -1162,22 +3310,11 @@
         []
       ]
     },
-    "Calendar Agent": {
-      "ai_tool": [
-        [
-          {
-            "node": "Orchestrator",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Telegram Trigger": {
       "main": [
         [
           {
-            "node": "Get Vocabulary",
+            "node": "Normalize TG Update",
             "type": "main",
             "index": 0
           }
@@ -1188,19 +3325,8 @@
       "main": [
         [
           {
-            "node": "Whisper",
+            "node": "Pre-AI Throttle",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenAI Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Orchestrator",
-            "type": "ai_languageModel",
             "index": 0
           }
         ]
@@ -1217,39 +3343,6 @@
         ]
       ]
     },
-    "Insert rows in a table in Postgres": {
-      "ai_tool": [
-        [
-          {
-            "node": "Orchestrator",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenAI Chat Model1": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Diary Agent",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenAI Chat Model2": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Calendar Agent",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Transcript Cleaner": {
       "main": [
         [
@@ -1261,155 +3354,12 @@
         ]
       ]
     },
-    "Create a row in Supabase": {
-      "ai_tool": [
-        [
-          {
-            "node": "Diary Agent",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Orchestrator Output Parser": {
-      "ai_outputParser": [
-        [
-          {
-            "node": "Orchestrator",
-            "type": "ai_outputParser",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Create an event in Google Calendar": {
-      "ai_tool": [
-        [
-          {
-            "node": "Calendar Agent",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Delete an event in Google Calendar": {
-      "ai_tool": [
-        [
-          {
-            "node": "Calendar Agent",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get an event in Google Calendar": {
-      "ai_tool": [
-        [
-          {
-            "node": "Calendar Agent",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get many events in Google Calendar": {
-      "ai_tool": [
-        [
-          {
-            "node": "Calendar Agent",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Update an event in Google Calendar": {
-      "ai_tool": [
-        [
-          {
-            "node": "Calendar Agent",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Diary Agent": {
-      "ai_tool": [
-        [
-          {
-            "node": "Orchestrator",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Set Results": {
       "main": [
         [
           {
-            "node": "Compose Reply",
+            "node": "Merge",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Compose Reply": {
-      "main": [
-        [
-          {
-            "node": "Reply to User",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenAI Chat Model6": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Orchestrator Output Parser",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Append row in sheet in Google Sheets": {
-      "ai_tool": [
-        [
-          {
-            "node": "Diary Agent",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Embeddings OpenAI": {
-      "ai_embedding": [
-        [
-          {
-            "node": "Supabase Vector Store",
-            "type": "ai_embedding",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Supabase Vector Store": {
-      "ai_tool": [
-        [
-          {
-            "node": "Knowledge Agent",
-            "type": "ai_tool",
             "index": 0
           }
         ]
@@ -1419,18 +3369,7 @@
       "main": [
         [
           {
-            "node": "Build Prompt",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Prompt": {
-      "main": [
-        [
-          {
-            "node": "Is Voice?",
+            "node": "Ingest Vocab",
             "type": "main",
             "index": 0
           }
@@ -1441,36 +3380,149 @@
       "main": [
         [
           {
-            "node": "Transcript Cleaner",
+            "node": "Whisper Retry Check",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Embeddings OpenAI2": {
-      "ai_embedding": [
+    "Normalize Input": {
+      "main": [
         [
           {
-            "node": "Supabase Vector Store1",
-            "type": "ai_embedding",
+            "node": "Sanitize Input",
+            "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Supabase Vector Store1": {
+    "Ingest Vocab": {
+      "main": [
+        [
+          {
+            "node": "Is Voice?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pass Text Message": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orchestrator Brain": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Short Term Memory": {
       "ai_tool": [
         [
           {
-            "node": "Diary Agent",
+            "node": "Orchestrator",
             "type": "ai_tool",
             "index": 0
           }
         ]
       ]
     },
-    "Normalize Input": {
+    "Whisper Retry Check": {
+      "main": [
+        [
+          {
+            "node": "Set Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Whisper1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Text": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Whisper1": {
+      "main": [
+        [
+          {
+            "node": "Whisper Retry Check1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Whisper Retry Check1": {
+      "main": [
+        [
+          {
+            "node": "Set Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop and Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pre-AI Throttle": {
+      "main": [
+        [
+          {
+            "node": "Whisper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pre-AI Throttle1": {
       "main": [
         [
           {
@@ -1481,7 +3533,168 @@
         ]
       ]
     },
-    "Knowledge Agent": {
+    "Empty Input Guard": {
+      "main": [
+        [
+          {
+            "node": "Pre-AI Throttle1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ei Saanud Aru",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sanitize Input": {
+      "main": [
+        [
+          {
+            "node": "Callback?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Transcript Cleaner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        []
+      ]
+    },
+    "Format and Chunk Reply": {
+      "main": [
+        [
+          {
+            "node": "First Chunk?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Placeholder meta": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Format and Chunk Reply",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Usage and Duration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "First Chunk?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Chunk": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Usage and Duration": {
+      "main": [
+        [
+          {
+            "node": "Log Duration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Duration": {
+      "main": [
+        [
+          {
+            "node": "Metrics to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send Chunk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Placeholder": {
+      "main": [
+        [
+          {
+            "node": "Placeholder meta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Vocabulary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Diary Agent Tool": {
       "ai_tool": [
         [
           {
@@ -1492,23 +3705,320 @@
         ]
       ]
     },
-    "OpenAI Chat Model7": {
+    "Calendar Agent Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Knowledge Agent Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrics to DB": {
+      "main": [
+        [
+          {
+            "node": "Observability Logging",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perf Start": {
+      "main": [
+        [
+          {
+            "node": "Placeholder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finish Timer": {
+      "main": [
+        [
+          {
+            "node": "Set Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KTA Agent Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback?": {
+      "main": [
+        [
+          {
+            "node": "Parse Callback1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Empty Input Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
       "ai_languageModel": [
         [
           {
-            "node": "Knowledge Agent",
+            "node": "Orchestrator",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Structured Output Parser",
             "type": "ai_languageModel",
             "index": 0
           }
         ]
       ]
     },
-    "Get row(s) in sheet in Google Sheets": {
-      "ai_tool": [
+    "HTTP Request": {
+      "main": [
         [
           {
-            "node": "Knowledge Agent",
-            "type": "ai_tool",
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize TG Update": {
+      "main": [
+        [
+          {
+            "node": "Perf Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Callback1": {
+      "main": [
+        [
+          {
+            "node": "Answer Query a callback1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Query a callback1": {
+      "main": [
+        [
+          {
+            "node": "Set Project?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Project?1": {
+      "main": [
+        [
+          {
+            "node": "Is Inbox?1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Message (CANCEL)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Inbox?1": {
+      "main": [
+        [
+          {
+            "node": "Clear Default2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lookup Project Id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Default1": {
+      "main": [
+        [
+          {
+            "node": "Edit Message (PROJECT)2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Message (PROJECT)2": {
+      "main": [
+        [
+          {
+            "node": "IF Need Folder?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Default2": {
+      "main": [
+        [
+          {
+            "node": "Edit Message (INBOX)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Project Id": {
+      "main": [
+        [
+          {
+            "node": "Upsert Default1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Need Folder?": {
+      "main": [
+        [
+          {
+            "node": "Create Project Folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resolve Folder ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Project Folder": {
+      "main": [
+        [
+          {
+            "node": "Save Folder Id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Folder Id": {
+      "main": [
+        [
+          {
+            "node": "Resolve Folder ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rows to Items": {
+      "main": [
+        [
+          {
+            "node": "Move File to Project Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Folder ID": {
+      "main": [
+        [
+          {
+            "node": "Select Files for Message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Rows to Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Files for Message": {
+      "main": [
+        [
+          {
+            "node": "Rows to Items",
+            "type": "main",
             "index": 0
           }
         ]
