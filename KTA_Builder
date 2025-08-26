@@ -1,0 +1,948 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"project_id\": \"53001f27-faa2-466a-837f-9f0c060d4dac\",\n  \"act_date_iso\": \"2025-08-07\"\n}\n"
+      },
+      "id": "5e9ee981-fcba-48d8-9ad5-aae68ae55b91",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        3584,
+        2080
+      ],
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH\nt0 AS (\n  SELECT $2::date AS at\n),\ndi AS (\n  SELECT string_agg(text, ' ' ORDER BY \"timestamp\") AS ctx\n  FROM public.diaryagententries, t0\n  WHERE project_id = $1::uuid\n    AND \"timestamp\" BETWEEN t0.at - interval '2 days' AND t0.at + interval '2 days'\n),\nkw AS (\n  -- keywords are space-separated; build a tsquery\n  SELECT regexp_replace($3::text, '\\s+', ' | ', 'g') AS q\n),\ngrp AS (\n  SELECT\n    COALESCE(NULLIF(tg_media_group_id::text,''), tg_message_id::text) AS group_key,\n    MIN(created_at)                                                 AS ts,\n    ARRAY_AGG(id        ORDER BY created_at)                        AS att_ids,\n    ARRAY_AGG(file_name ORDER BY created_at)                        AS files\n  FROM public.kta_attachments\n  WHERE project_id = $1::uuid\n    AND created_at BETWEEN ($2::timestamptz - interval '3 days')\n                        AND ($2::timestamptz + interval '3 days')\n    AND mime_type LIKE 'image/%'          -- << filter to images here; no alias needed later\n  GROUP BY 1\n),\nscored AS (\n  SELECT\n    g.group_key,\n    g.att_ids,\n    g.files,\n    -- time score: 1 at same day, 0 at >= 3 days\n    GREATEST(0, 1 - (ABS(EXTRACT(EPOCH FROM (g.ts - (SELECT at FROM t0)))) / (86400*3))) AS time_score,\n    -- text score: ts_rank between diary context and keywords\n    COALESCE(\n      ts_rank(\n        to_tsvector('simple', COALESCE((SELECT ctx FROM di), '')),\n        plainto_tsquery('simple', (SELECT q FROM kw))\n      ),\n      0\n    ) AS text_score\n  FROM grp g\n)\nSELECT\n  group_key,\n  att_ids,\n  files,\n  ROUND( (0.7*time_score + 0.3*LEAST(text_score, 1))::numeric, 3 ) AS score\nFROM scored\nORDER BY score DESC, group_key\nLIMIT 6;",
+        "options": {
+          "queryReplacement": "={{ [\n  String($json.project_id ?? $items('Edit Fields')[0].json.project_id).trim(),\n  // prefer act_date_iso; fall back to upstream center_date or today\n  String(\n    ($json.act_date_iso\n      ?? $items('Execute a SQL query')[0]?.json?.center_date\n      ?? new Date().toISOString().slice(0,10)\n    ).toString().slice(0,10)\n  ),\n  String($json.scope_hint ?? '')\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4400,
+        2336
+      ],
+      "id": "135ced9b-2fcd-4412-aa26-905844e82200",
+      "name": "Auto-pick photos",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    name, \n    address, \n    contract_no, \n    drive_folder_id\nFROM projects\nWHERE id = '{{ $json.project_id }}'\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4400,
+        2080
+      ],
+      "id": "612ea080-11ba-4346-873e-5547bbec2968",
+      "name": "Resolve Project Meta1",
+      "alwaysOutputData": false,
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.kta_series (project_id, last_no)\nVALUES ($1::uuid, 1)\nON CONFLICT (project_id)\nDO UPDATE SET last_no = public.kta_series.last_no + 1\nRETURNING last_no AS next_no;",
+        "options": {
+          "queryReplacement": "={{ String($json.project_id ?? $json.project?.id ?? $items('Edit Fields2')[0].json.project_id) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4816,
+        2080
+      ],
+      "id": "f3499cf8-8f6c-43c0-a877-93d0b7044ccd",
+      "name": "Next Act Number1",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  $1::uuid                                                       as p_id,\n  $2::date                                                       as center_date,\n  ($2::date)::timestamptz - interval '2 days'                    as win_start,\n  ($2::date)::timestamptz + interval '2 days'                    as win_end,\n  (select count(*) from public.diaryagententries\n    where project_id = $1::uuid)                                 as total_for_project,\n  (select count(*) from public.diaryagententries\n    where project_id = $1::uuid\n      and \"timestamp\" between\n          ($2::date)::timestamptz - interval '2 days' and\n          ($2::date)::timestamptz + interval '2 days')           as in_window;\n",
+        "options": {
+          "queryReplacement": "={{ [\n  ($json.project_id ?? $items('Edit Fields2')[0].json.project_id)?.toString().trim(),\n  ($json.act_date_iso ?? $items('Edit Fields2')[0].json.act_date_iso)?.toString().trim()\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5024,
+        2080
+      ],
+      "id": "2b22a545-8a9b-4fca-b581-06dd9d2407a1",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  $1::uuid                                                       as p_id,\n  $1::uuid                                                       as project_id,\n  $2::date                                                       as center_date,\n  $2::date                                                       as act_date_iso,\n  ($2::date)::timestamptz - interval '2 days'                    as win_start,\n  ($2::date)::timestamptz + interval '2 days'                    as win_end,\n  (select count(*) from public.diaryagententries\n    where project_id = $1::uuid)                                 as total_for_project,\n  (select count(*) from public.diaryagententries\n    where project_id = $1::uuid\n      and \"timestamp\" between\n          ($2::date)::timestamptz - interval '2 days' and\n          ($2::date)::timestamptz + interval '2 days')           as in_window;",
+        "options": {
+          "queryReplacement": "={{ [\n  String($json.p_id ?? $json.project_id ?? $items('Edit Fields')[0].json.project_id).trim(),\n  String(($json.center_date ?? $json.act_date_iso ?? new Date().toISOString().slice(0,10)).toString().slice(0,10))\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4192,
+        2336
+      ],
+      "id": "1491538f-7d9d-43e7-a2e3-c5a547753c94",
+      "name": "Candidate uploads (±3d)2",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.kta_acts\n  (id, project_id, act_no, act_date, work_title, location_text,\n   conformity_text, extra_info, method_text, inspection_time,\n   created_by, created_at, status)\nVALUES (\n  gen_random_uuid(),\n  $1::uuid,                                 -- project_id\n  $2::int,                                  -- act_no\n  $3::date,                                 -- act_date\n  TRIM($4::text),                           -- work_title\n  TRIM($5::text),                           -- location_text\n  COALESCE(NULLIF(TRIM($6::text),''), 'N/A'),                -- conformity_text\n  COALESCE(NULLIF(TRIM($7::text),''), ''),                   -- extra_info\n  COALESCE(NULLIF(TRIM($8::text),''), 'Visuaalne meetod ja fotod'), -- method_text\n  COALESCE(NULLIF(TRIM($9::text), '')::timestamptz, ($3::date)::timestamptz), -- inspection_time (fallback to act_date)\n  COALESCE(NULLIF(TRIM($10::text),''), 'Gunnar'),            -- created_by\n  now(),\n  'draft'\n)\nRETURNING id;\n",
+        "options": {
+          "queryReplacement": "={{ [\n  String($node['Code1'].json.project_id),                  // $1\n  Number($node['Next Act Number1'].json.next_no),         // $2\n  String($node['Code1'].json.act_date_iso),               // $3\n  String($json.work_title ?? ''),                         // $4\n  String($json.location_text ?? ''),                      // $5\n  String($json.conformity_text ?? ''),                    // $6\n  String($json.extra_info ?? ''),                         // $7\n  String($json.method_text ?? ''),                        // $8\n  String($json.inspection_time_iso ?? ''),                // $9\n  String($json.created_by ?? 'Gunnar')                    // $10\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5280,
+        2336
+      ],
+      "id": "8ccb987b-4ef2-4aec-85d2-58406c9f0ad4",
+      "name": "Insert KTA header (draft)2",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH s AS (\n  SELECT string_to_array(NULLIF($2::text, ''), ',')::bigint[] AS arr\n),\nids AS (\n  SELECT u.att_id, u.ord::int\n  FROM s\n  LEFT JOIN LATERAL unnest(s.arr) WITH ORDINALITY AS u(att_id, ord) ON true\n)\nUPDATE public.kta_attachments a\nSET act_id    = $1::uuid,\n    sort_order = ids.ord\nFROM ids\nWHERE a.id = ids.att_id;",
+        "options": {
+          "queryReplacement": "={{ $node['Insert KTA header (draft)2'].json.id }}, {{ ($node['Set Act Fields2'].json.selected_attachment_ids ?? []).join(',') }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5600,
+        2336
+      ],
+      "id": "17a84ba7-2baa-4c3e-a952-9b52edf393c0",
+      "name": "Claim Attachments2",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// helpers\nconst today = () => new Date().toISOString().slice(0, 10);\nconst isoDateOnly = v => v ? new Date(v).toISOString().slice(0, 10) : null;\n\nconst row = $json;\n\n// carry forward project_id from either the current item or Edit Fields\nconst incomingProjectId =\n  row.project_id ?? $items('Edit Fields2')[0].json.project_id ?? null;\n\nconst act_date_iso = isoDateOnly(row.act_date_iso) ?? today();\nconst inspection_time_iso = isoDateOnly(row.inspection_time_iso);\nconst not_found = row.not_found === true;\n\nreturn {\n  json: {\n    ...row,\n    project_id: incomingProjectId,\n    act_date_iso,\n    inspection_time_iso,\n    project: not_found ? null : {\n      id: incomingProjectId,\n      name: row.name,\n      address: row.address,\n      contract_no: row.contract_no,\n      drive_folder_id: row.drive_folder_id,\n    },\n  },\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4608,
+        2080
+      ],
+      "id": "b49adb2b-8b48-408b-a5ff-491fbbc07842",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "43046272-e92f-42ee-9dc7-16cd8a327c97",
+              "name": "work_title",
+              "value": "={{ $json.scope_hint || 'Kaetud töö' }}",
+              "type": "string"
+            },
+            {
+              "id": "02961636-6386-4062-9001-c7c882a17c00",
+              "name": "location_text",
+              "value": "={{ $node['Resolve Project Meta1'].json.address || 'EMPTY' }}",
+              "type": "string"
+            },
+            {
+              "id": "bde2f439-e56f-4285-a05a-cffcf7d96d42",
+              "name": "conformity_text",
+              "value": "={{ $json.conformity_text || 'EMPTY' }}",
+              "type": "string"
+            },
+            {
+              "id": "3804c6b0-b829-4926-af46-e596de5ff850",
+              "name": "extra_info",
+              "value": "={{ ($json.extra_info || 'EMPTY') }}",
+              "type": "string"
+            },
+            {
+              "id": "b72dca5d-1556-4c03-9eb2-a6195ee2f7d1",
+              "name": "method_text",
+              "value": "={{ $json.method_text || 'EMPTY' }}",
+              "type": "string"
+            },
+            {
+              "id": "15470ec0-3ad2-426f-b481-adccb6252d42",
+              "name": "created_by",
+              "value": "={{ $json.created_by || 'Gunnar' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4816,
+        2336
+      ],
+      "id": "e672d962-1d8b-459b-b8a3-10840fbfde77",
+      "name": "Set Act Fields2"
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ 'KTA-' + $node['Next Act Number1'].json.next_no + ' ' + ($json.work_title || '').replace(/[^A-Za-z0-9 _-]/g,'').slice(0,60) }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $node['Resolve Project Meta1'].json.drive_folder_id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5936,
+        2336
+      ],
+      "id": "bf5dd3d9-b1cd-4291-b04e-afed0cd16d46",
+      "name": "Ensure KTA Folder2",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "etIcdnam5EQ8HEzz",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "Photos",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        6352,
+        2336
+      ],
+      "id": "fc3a5223-c72d-41d0-81be-93b560b36539",
+      "name": "Ensure Photos2",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "etIcdnam5EQ8HEzz",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "Docs",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $node['Ensure KTA Folder2'].json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        6560,
+        2336
+      ],
+      "id": "b2e28dc0-d9cf-43db-a44a-5f0d1bfab8fc",
+      "name": "Ensure Docs2",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "etIcdnam5EQ8HEzz",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.fileId }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.folderId }}",
+          "mode": "id"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        7104,
+        2336
+      ],
+      "id": "6a3b9d67-185b-4236-9d83-867e2962248d",
+      "name": "Move file2",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "etIcdnam5EQ8HEzz",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// all attachment rows (±3d)\nconst attRows = $items('Candidate uploads (±3d)2').map(i => i.json);\n// all picked ids (flattened)\nconst pickedIds = $items('Auto-pick photos').map(i => i.json.att_ids).flat().map(String);\n\nconst byId = new Map(attRows.map(r => [String(r.id), r]));\nconst docsFolder = $node['Ensure Docs2'].json.id;\nconst photosFolder = $node['Ensure Photos2'].json.id;\n\nconst out = [];\nfor (const id of pickedIds) {\n  const r = byId.get(id);\n  if (!r) continue;\n  const folderId = String(r.mime_type || '').startsWith('application/pdf') ? docsFolder : photosFolder;\n  out.push({ json: { fileId: r.drive_file_id, folderId, file_name: r.file_name } });\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6768,
+        2336
+      ],
+      "id": "3b5be602-d92a-4e1c-9078-9dced8d43024",
+      "name": "Rows → MoveItems2"
+    },
+    {
+      "parameters": {
+        "operation": "copy",
+        "fileId": {
+          "__rl": true,
+          "value": "1YqWSo8DiRNlx5jK10aY8hRbnb4KPSD0giX08GM4DAK4",
+          "mode": "list",
+          "cachedResultName": "KTA TEMPLATE (DO NOT EDIT)",
+          "cachedResultUrl": "https://docs.google.com/document/d/1YqWSo8DiRNlx5jK10aY8hRbnb4KPSD0giX08GM4DAK4/edit?usp=drivesdk"
+        },
+        "name": "={{ 'KTA-'+$node['Next Act Number1'].json.next_no }}",
+        "sameFolder": false,
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $node['Ensure KTA Folder2'].json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        7312,
+        2336
+      ],
+      "id": "ac8364d1-9714-4466-8453-f1e1f917a8f4",
+      "name": "Copy Template2",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "etIcdnam5EQ8HEzz",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"repl\": {\n    \"akti_nr\": \"={{ $node['Next Act Number'].json.next_no }}\",\n    \"akti_kuupaev\": \"={{ $json.act_date_iso }}\",\n    \"ehitis\": \"={{ $node['Resolve Project Meta'].json.name }}\",\n    \"aadress\": \"={{ $node['Resolve Project Meta'].json.address }}\",\n    \"leping\": \"={{ $node['Resolve Project Meta'].json.contract_no || '' }}\",\n    \"too_nimetus\": \"={{ $json.work_title }}\",\n    \"paiknemine\": \"={{ $json.location_text }}\",\n    \"vastavus\": \"={{ $json.conformity_text || 'Vastab kehtivatele nõuetele ja heale ehitustavale' }}\",\n    \"muu_info\": \"={{ $json.extra_info || '' }}\",\n    \"meetod\": \"={{ $json.method_text || 'Visuaalne meetod ja fotod' }}\",\n    \"kontrolli_aeg\": \"={{ $json.inspection_time_iso || '' }}\",\n    \"tegija\": \"={{ $json.created_by || 'Kodu Kuubis OÜ' }}\",\n    \"omanikujarelevalve\": \"={{ 'allkirjastatud digitaalselt' }}\",\n    \"lisad_loetelu\": \"={{ $items('Auto-pick photos').map(i => i.json.files).flat().join('; ') }}\"\n  }\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        7920,
+        2336
+      ],
+      "id": "c1dde1bd-d0b2-4e43-bfb0-15ca271eb190",
+      "name": "Build Replacements2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "78434ca9-0e38-425b-86b0-86ff2a298451",
+              "name": "selected_attachment_ids",
+              "value": "={{ $items('Auto-pick photos').map(i => i.json.att_ids).flat().join(',') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4608,
+        2336
+      ],
+      "id": "a3ae21b1-5540-433b-a5ba-f575a85be390",
+      "name": "Collect Pick IDs2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://docs.googleapis.com/v1/documents/{{ $node[\"Copy Template2\"].json.id }}:batchUpdate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  requests: Object.entries($json.repl).map(([k, v]) => ({\n    replaceAllText: {\n      containsText: { text: '{{' + k + '}}', matchCase: true },\n      replaceText: String(v ?? '')\n    }\n  }))\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8128,
+        2336
+      ],
+      "id": "fd922665-eba1-4266-a2b3-730f63a7ed1b",
+      "name": "Docs Replace2",
+      "credentials": {
+        "googleOAuth2Api": {
+          "id": "V7fAWigEhnLTgr2u",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $node['Copy Template2'].json.id }}",
+          "mode": "id"
+        },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {
+              "docsToFormat": "application/pdf"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        7104,
+        2576
+      ],
+      "id": "8834b3db-8498-4dd0-bf3b-f8c461c66630",
+      "name": "Download file2",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "etIcdnam5EQ8HEzz",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.kta_acts\nSET doc_file_id = $2::text\nWHERE id = $1::uuid;",
+        "options": {
+          "queryReplacement": "={{ String($node[\"Insert KTA header (draft)2\"].json.id) }},{{ String($node[\"Copy Template2\"].json.id) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        7712,
+        2336
+      ],
+      "id": "a3b760dc-eda4-43f5-be51-648f3780bb02",
+      "name": "Update Doc ID in DB2",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "={{ 'KTA-' + $node['Next Act Number1'].json.next_no + '.pdf' }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $node['Ensure Docs2'].json.id }}",
+          "mode": "id"
+        },
+        "options": {
+          "propertiesUi": {
+            "propertyValues": [
+              {
+                "key": "binaryData",
+                "value": "true"
+              },
+              {
+                "key": "binaryPropertyName",
+                "value": "data"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        7312,
+        2576
+      ],
+      "id": "ede03243-c124-433a-8b32-000e2b89d6ae",
+      "name": "Upload file2",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "etIcdnam5EQ8HEzz",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.kta_acts\nSET pdf_file_id = $2::text, status = 'pdf_ready'\nWHERE id = $1::uuid;",
+        "options": {
+          "queryReplacement": "={{ String($node[\"Insert KTA header (draft)2\"].json.id) }},{{ String($node[\"Upload file2\"].json.id) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        7712,
+        2576
+      ],
+      "id": "49010552-afd7-42ab-a439-8f0b0e47221d",
+      "name": "Update PDF ID in DB2",
+      "credentials": {
+        "postgres": {
+          "id": "7oiSz999PCdpxVvM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d9f65b70-4bf0-44b1-b7cb-67f62700214d",
+              "name": "project_id",
+              "value": "53001f27-faa2-466a-837f-9f1c060d4dac",
+              "type": "string"
+            },
+            {
+              "id": "a13d8382-bb85-4beb-a0ea-dd818bf0ef34",
+              "name": "act_date_iso",
+              "value": "={{ $json.act_date_iso || '2025-08-07' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4192,
+        2080
+      ],
+      "id": "5069b5a4-1cc1-47b5-9ca9-eb990795c371",
+      "name": "Edit Fields2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "57d58e1d-5f9a-4904-8b91-e855808258b8",
+              "name": "project_id",
+              "value": "53001f27-faa2-466a-837f-9f0c060d4dac",
+              "type": "string"
+            },
+            {
+              "id": "42050506-23fb-4479-8249-8831e85129ab",
+              "name": "act_date_iso",
+              "value": "2025-08-07",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3952,
+        2080
+      ],
+      "id": "64aabe0a-efaa-421d-9037-dd51972fbd8e",
+      "name": "Edit Fields3"
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-pick photos": {
+      "main": [
+        [
+          {
+            "node": "Collect Pick IDs2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Project Meta1": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next Act Number1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Candidate uploads (±3d)2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Candidate uploads (±3d)2": {
+      "main": [
+        [
+          {
+            "node": "Auto-pick photos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert KTA header (draft)2": {
+      "main": [
+        [
+          {
+            "node": "Claim Attachments2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Attachments2": {
+      "main": [
+        [
+          {
+            "node": "Ensure KTA Folder2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Next Act Number1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Act Fields2": {
+      "main": [
+        [
+          {
+            "node": "Insert KTA header (draft)2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure KTA Folder2": {
+      "main": [
+        [
+          {
+            "node": "Ensure Photos2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Photos2": {
+      "main": [
+        [
+          {
+            "node": "Ensure Docs2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Docs2": {
+      "main": [
+        [
+          {
+            "node": "Rows → MoveItems2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move file2": {
+      "main": [
+        [
+          {
+            "node": "Copy Template2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rows → MoveItems2": {
+      "main": [
+        [
+          {
+            "node": "Move file2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Copy Template2": {
+      "main": [
+        [
+          {
+            "node": "Update Doc ID in DB2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Replacements2": {
+      "main": [
+        [
+          {
+            "node": "Docs Replace2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Pick IDs2": {
+      "main": [
+        [
+          {
+            "node": "Set Act Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Docs Replace2": {
+      "main": [
+        [
+          {
+            "node": "Download file2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file2": {
+      "main": [
+        [
+          {
+            "node": "Upload file2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Doc ID in DB2": {
+      "main": [
+        [
+          {
+            "node": "Build Replacements2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload file2": {
+      "main": [
+        [
+          {
+            "node": "Update PDF ID in DB2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields2": {
+      "main": [
+        [
+          {
+            "node": "Resolve Project Meta1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields3": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3ff8c8236d61fc15be87a593a452e66a1d21d618f6b7148e70b032539de22929"
+  }
+}
